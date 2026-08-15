@@ -1,7 +1,6 @@
-import { appendFileSync, chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, chmodSync, mkdirSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { isAbsolute, join } from 'node:path';
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 function readLines(path) {
     let text;
     try {
@@ -33,63 +32,34 @@ export function defaultDataDir() {
     const dshHome = process.env.DSH_HOME ?? join(homedir(), '.dsh');
     return join(dshHome, 'omdsh-plugin-lab');
 }
-export class ExperienceStore {
+/** Local outbox for the same closed packet sent over the wire. It stores no logs or identifiers. */
+export class FeedbackStore {
     dataDir;
     eventsPath;
-    crashesPath;
     receiptsPath;
     shareRequestsPath;
     receiptSeenPath;
-    identityPath;
     constructor(dataDir = defaultDataDir()) {
         if (!isAbsolute(dataDir))
             throw new TypeError('plugin-lab: dataDir must be an absolute path');
         this.dataDir = dataDir;
-        this.eventsPath = join(dataDir, 'events.ndjson');
-        this.crashesPath = join(dataDir, 'crashes.ndjson');
-        this.receiptsPath = join(dataDir, 'receipts.ndjson');
-        this.shareRequestsPath = join(dataDir, 'share-requests.ndjson');
-        this.receiptSeenPath = join(dataDir, 'receipt-seen.ndjson');
-        this.identityPath = join(dataDir, '.install-id');
+        this.eventsPath = join(dataDir, 'feedback-v2.ndjson');
+        this.receiptsPath = join(dataDir, 'receipts-v2.ndjson');
+        this.shareRequestsPath = join(dataDir, 'share-requests-v2.ndjson');
+        this.receiptSeenPath = join(dataDir, 'receipt-seen-v2.ndjson');
         mkdirSync(dataDir, { recursive: true, mode: 0o700 });
         chmodSync(dataDir, 0o700);
-    }
-    participantId() {
-        try {
-            const existing = readFileSync(this.identityPath, 'utf8').trim();
-            if (UUID.test(existing))
-                return existing;
-        }
-        catch (error) {
-            if (error.code !== 'ENOENT')
-                throw error;
-        }
-        return this.resetParticipantId();
-    }
-    resetParticipantId() {
-        const id = crypto.randomUUID();
-        writeFileSync(this.identityPath, `${id}\n`, { encoding: 'utf8', mode: 0o600 });
-        chmodSync(this.identityPath, 0o600);
-        return id;
     }
     append(record) {
         appendJson(this.eventsPath, record);
     }
-    /** This deliberately uses synchronous append: the process may exit immediately afterward. */
-    appendCrash(record) {
-        appendJson(this.crashesPath, record);
-    }
-    crashRecords(trialId) {
-        const records = readLines(this.crashesPath);
-        return trialId === undefined ? records : records.filter(record => record.trialId === trialId);
-    }
     appendReceipt(receipt) {
         appendJson(this.receiptsPath, receipt);
     }
-    requestShare(eventId, shareNote = false) {
+    requestShare(eventId) {
         if (this.record(eventId) === undefined)
-            throw new Error(`unknown local event: ${eventId}`);
-        appendJson(this.shareRequestsPath, { eventId, requestedAt: Date.now(), shareNote });
+            throw new Error('unknown local feedback event');
+        appendJson(this.shareRequestsPath, { eventId });
     }
     markSeen(receipt) {
         if (receipt.receiptId === undefined)
@@ -98,7 +68,6 @@ export class ExperienceStore {
             receiptId: receipt.receiptId,
             ...receipt.status === undefined ? {} : { status: receipt.status },
             ...receipt.updatedAt === undefined ? {} : { updatedAt: receipt.updatedAt },
-            seenAt: Date.now(),
         });
     }
     records() {
@@ -134,20 +103,13 @@ export class ExperienceStore {
     }
     pending() {
         const delivered = new Set(this.receipts().map(receipt => receipt.eventId));
-        const requests = new Map();
-        for (const request of readLines(this.shareRequestsPath))
-            requests.set(request.eventId, request);
+        const requests = new Set(readLines(this.shareRequestsPath).map(row => row.eventId));
         return this.records().flatMap(record => {
             if (delivered.has(record.event.eventId))
                 return [];
-            const request = requests.get(record.event.eventId);
-            if (!record.requestedShare && request === undefined)
+            if (!record.requestedShare && !requests.has(record.event.eventId))
                 return [];
-            return [{
-                    ...record,
-                    requestedShare: true,
-                    shareNote: record.shareNote || request?.shareNote === true,
-                }];
+            return [{ ...record, requestedShare: true }];
         });
     }
 }

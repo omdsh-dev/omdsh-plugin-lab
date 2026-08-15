@@ -1,5 +1,3 @@
-ALTER TABLE experience_events
-  ADD COLUMN IF NOT EXISTS process_crashes integer NOT NULL DEFAULT 0;
-
-ALTER TABLE experience_events
-  ADD COLUMN IF NOT EXISTS crash_signatures jsonb NOT NULL DEFAULT '[]'::jsonb;
+-- Historical crash-signal migration intentionally retired. Strict v2 never
+-- creates, reads or writes crash details or log-derived data.
+SELECT 1;

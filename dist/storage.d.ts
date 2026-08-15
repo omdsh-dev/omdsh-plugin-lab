@@ -1,28 +1,22 @@
-import type { IngestReceipt, LocalCrashRecord, LocalExperienceRecord } from './protocol.js';
+import type { IngestReceipt, LocalFeedbackRecord } from './protocol.js';
 export declare function defaultDataDir(): string;
-export declare class ExperienceStore {
+/** Local outbox for the same closed packet sent over the wire. It stores no logs or identifiers. */
+export declare class FeedbackStore {
     readonly dataDir: string;
     readonly eventsPath: string;
-    readonly crashesPath: string;
     readonly receiptsPath: string;
     readonly shareRequestsPath: string;
     readonly receiptSeenPath: string;
-    private readonly identityPath;
     constructor(dataDir?: string);
-    participantId(): string;
-    resetParticipantId(): string;
-    append(record: LocalExperienceRecord): void;
-    /** This deliberately uses synchronous append: the process may exit immediately afterward. */
-    appendCrash(record: LocalCrashRecord): void;
-    crashRecords(trialId?: string): LocalCrashRecord[];
+    append(record: LocalFeedbackRecord): void;
     appendReceipt(receipt: IngestReceipt): void;
-    requestShare(eventId: string, shareNote?: boolean): void;
+    requestShare(eventId: string): void;
     markSeen(receipt: IngestReceipt): void;
-    records(): LocalExperienceRecord[];
+    records(): LocalFeedbackRecord[];
     receipts(): IngestReceipt[];
-    record(eventId: string): LocalExperienceRecord | undefined;
-    latestLocalRecord(): LocalExperienceRecord | undefined;
+    record(eventId: string): LocalFeedbackRecord | undefined;
+    latestLocalRecord(): LocalFeedbackRecord | undefined;
     latestReceipts(): IngestReceipt[];
     unreadReceipts(): IngestReceipt[];
-    pending(): LocalExperienceRecord[];
+    pending(): LocalFeedbackRecord[];
 }

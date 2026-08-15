@@ -10,7 +10,7 @@ export function createHandler(service: FeedbackService, config: HttpConfig) {
   return async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
     try {
       const url = new URL(request.url ?? '/', 'http://localhost')
-      if (request.method === 'GET' && url.pathname === '/healthz') return json(response, 200, { ok: true })
+      if (request.method === 'GET' && url.pathname === '/healthz') return json(response, 200, { status: 'ok' })
       if (request.method === 'POST' && url.pathname === '/v1/experience-events') {
         if (config.ingestToken !== undefined && bearer(request) !== config.ingestToken) return json(response, 401, { error: 'unauthorized' })
         return json(response, 200, await service.ingest(await body(request)))
@@ -28,7 +28,6 @@ export function createHandler(service: FeedbackService, config: HttpConfig) {
         const input = await body(request) as Record<string, unknown>
         const value = await service.release(release[1] ?? '', {
           recommendedVersion: typeof input.recommendedVersion === 'string' ? input.recommendedVersion : '',
-          message: typeof input.message === 'string' ? input.message : '',
           ...typeof input.trackingUrl === 'string' ? { trackingUrl: input.trackingUrl } : {},
         })
         return value === undefined ? json(response, 404, { error: 'cluster not found' }) : json(response, 200, value)
@@ -40,7 +39,7 @@ export function createHandler(service: FeedbackService, config: HttpConfig) {
       return json(response, 404, { error: 'not found' })
     } catch (error: unknown) {
       const status = error instanceof TypeError ? 400 : 500
-      return json(response, status, { error: error instanceof Error ? error.message : String(error) })
+      return json(response, status, { error: status === 400 ? 'invalid closed packet' : 'internal error' })
     }
   }
 }
@@ -51,7 +50,7 @@ async function body(request: IncomingMessage): Promise<unknown> {
   for await (const chunk of request) {
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
     size += buffer.length
-    if (size > 32 * 1_024) throw new TypeError('request body exceeds 32 KiB')
+    if (size > 1_024) throw new TypeError('request body exceeds 1 KiB')
     chunks.push(buffer)
   }
   try {

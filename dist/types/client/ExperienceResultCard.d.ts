@@ -1,13 +1,13 @@
 import type { MessageId } from '@deepseek-ai/dsh-client-connection/client';
 import type { ConversationNode } from '@deepseek-ai/dsh-client-runtime/client';
 import type { InjectFace, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots';
-import type { TrialOutcome } from '../protocol.js';
+import type { ExperienceVerdict } from '../protocol.js';
 import type { LabController } from './controller.js';
 export interface LabInjected {
     hooks: {
         pluginLab: LabController;
     };
-    record: (messageId: MessageId, outcome: TrialOutcome) => Promise<void>;
+    record: (messageId: MessageId, verdict: ExperienceVerdict) => Promise<void>;
     join: () => Promise<void>;
     dismiss: () => void;
 }

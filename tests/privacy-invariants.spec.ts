@@ -1,0 +1,78 @@
+import type { Agent } from '@deepseek-ai/dsh-agent'
+import { describe, expect, it } from 'vitest'
+import { createAgentAssessmentTool } from '../src/agent-tool.js'
+import { probeLoaderHealth } from '../src/health.js'
+import { uploadPayload, type FeedbackEventV2, type LocalFeedbackRecord } from '../src/protocol.js'
+
+function event(eventId = crypto.randomUUID()): FeedbackEventV2 {
+  return {
+    schemaVersion: 2,
+    type: 'feedback.signal',
+    eventId,
+    plugin: { moduleName: '@example/plugin', version: '1.0.0' },
+    health: 'ok',
+    experience: 'good',
+    source: 'user_confirmed',
+  }
+}
+
+describe('zero-content privacy invariants', () => {
+  it('uses the local packet byte-for-byte as the upload packet', () => {
+    const packet = event()
+    const record: LocalFeedbackRecord = { event: packet, requestedShare: true }
+    expect(uploadPayload(record)).toBe(packet)
+    expect(Object.keys(uploadPayload(record)).sort()).toEqual([
+      'eventId', 'experience', 'health', 'plugin', 'schemaVersion', 'source', 'type',
+    ])
+  })
+
+  it('maps Host lifecycle states without reading plugin content', () => {
+    const loader = (state: number) => ({
+      entries: () => [{ options: { name: '@example/plugin' }, fiber: { state } }],
+    })
+    expect(probeLoaderHealth(loader(2), '@example/plugin')).toBe('ok')
+    expect(probeLoaderHealth(loader(3), '@example/plugin')).toBe('error')
+    expect(probeLoaderHealth(loader(1), '@example/plugin')).toBe('unavailable')
+    expect(probeLoaderHealth(undefined, '@example/plugin')).toBe('unknown')
+    expect(probeLoaderHealth({ entries: () => [] }, '@example/plugin')).toBe('unavailable')
+    expect(probeLoaderHealth({ entries: () => { throw new Error('CANARY_SECRET') } }, '@example/plugin'))
+      .toBe('unknown')
+  })
+
+  it('gives the Agent a closed zero-argument and closed enum-only contract', async () => {
+    const tool = createAgentAssessmentTool(() => ({
+      health: 'ok', experience: 'unknown', userConfirmationRequired: true,
+    }))
+    expect(tool.parameters).toEqual({
+      type: 'object', properties: {}, required: [], additionalProperties: false,
+    })
+    expect(tool.output.schema).toMatchObject({ type: 'object', additionalProperties: false })
+    const result = await tool.execute({}, {
+      agent: undefined,
+      arguments: {},
+    } as never)
+    expect(result).toEqual({ health: 'ok', experience: 'unknown', userConfirmationRequired: true })
+    await expect(tool.execute({ reason: 'CANARY_SECRET' }, {
+      agent: undefined,
+      arguments: { reason: 'CANARY_SECRET' },
+    } as never)).rejects.toThrow('accepts no arguments')
+  })
+
+  it('cannot derive subjective experience when no user verdict exists', () => {
+    const tool = createAgentAssessmentTool((_agent: Agent | undefined) => ({
+      health: 'error', experience: 'unknown', userConfirmationRequired: true,
+    }))
+    expect(JSON.stringify(tool.output.schema)).not.toContain('good')
+    expect(JSON.stringify(tool.output.schema)).not.toContain('bad')
+  })
+
+  it('satisfies content non-interference for arbitrary private canaries', () => {
+    const firstPrivateWorld = 'prompt=ALICE_SECRET; stack=/Users/alice/private.ts'
+    const secondPrivateWorld = 'prompt=BOB_SECRET; token=sk-private'
+    const first = JSON.stringify(event('00000000-0000-4000-8000-000000000001'))
+    const second = JSON.stringify(event('00000000-0000-4000-8000-000000000001'))
+    expect(first).toBe(second)
+    expect(first).not.toContain(firstPrivateWorld)
+    expect(second).not.toContain(secondPrivateWorld)
+  })
+})

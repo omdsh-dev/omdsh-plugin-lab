@@ -5,9 +5,11 @@ import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { LabController, type CommandsRemote } from './controller.js'
 import { ExperienceResultCard, type LabInjected } from './ExperienceResultCard.js'
 import { InboxButton, type InboxInjected } from './InboxButton.js'
+import { ProbeButton, type ProbeInjected } from './ProbeButton.js'
 
 export { ExperienceResultCard } from './ExperienceResultCard.js'
 export { InboxButton } from './InboxButton.js'
+export { ProbeButton } from './ProbeButton.js'
 export { LabController } from './controller.js'
 
 export const inject = ['slots', 'remote', 'remote.commands']
@@ -53,4 +55,13 @@ export function apply(ctx: ClientContext): void {
       checkInbox: () => controllerFor(sessionId).inbox(),
     }),
   }, InboxButton))
+
+  ctx.slots.inject('conversation.input.left', () => ctx.slots.register({
+    name: 'conversation.input.left',
+    id: 'omdsh-plugin-lab-probe',
+    order: 39,
+    inject: (sessionId): ProbeInjected => ({
+      checkHealth: () => controllerFor(sessionId).probe(),
+    }),
+  }, ProbeButton))
 }

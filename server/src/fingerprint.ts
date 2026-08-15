@@ -2,31 +2,17 @@ import { createHash, createHmac } from 'node:crypto'
 import type { AcceptedEvent } from './types.js'
 
 export function symptomFor(event: AcceptedEvent): string {
-  if (event.loaderHealth === 'failed' || event.loaderHealth === 'missing') return `loader-${event.loaderHealth}`
-  if (event.processCrashes > 0) {
-    const crash = event.crashes[0]
-    return crash === undefined
-      ? 'runtime-crash'
-      : ['runtime-crash', crash.name, crash.code ?? '-', crash.frame ?? '-', crash.fingerprint].join(':')
-  }
-  if (event.agentErrors > 0) return 'agent-error'
-  if (event.toolErrors > 0) return 'tool-error'
-  return `outcome-${event.outcome}`
+  if (event.health !== 'ok') return `health-${event.health}`
+  return `experience-${event.experience}`
 }
 
 export function clusterKey(event: AcceptedEvent): string {
-  const parts = [
+  return createHash('sha256').update([
     event.pluginModule,
     event.pluginVersion ?? '*',
-    event.dshVersion,
-    event.taskId ?? '*',
-    symptomFor(event),
-  ]
-  return createHash('sha256').update(parts.join('\u001f')).digest('hex')
-}
-
-export function hashParticipant(secret: string, participantId: string): string {
-  return createHmac('sha256', secret).update(participantId).digest('hex')
+    event.health,
+    event.experience,
+  ].join('\u001f')).digest('hex')
 }
 
 export function followToken(secret: string, eventId: string): string {

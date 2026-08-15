@@ -5,7 +5,6 @@ function optionalString(value) {
 function parseReceipt(eventId, value) {
     const row = typeof value === 'object' && value !== null ? value : {};
     const receiptId = optionalString(row.receiptId);
-    const message = optionalString(row.message);
     const recommendedVersion = optionalString(row.recommendedVersion);
     const trackingUrl = optionalString(row.trackingUrl);
     const caseId = optionalString(row.caseId);
@@ -25,11 +24,9 @@ function parseReceipt(eventId, value) {
         : undefined;
     return {
         eventId,
-        receivedAt: Date.now(),
         ...receiptId === undefined ? {} : { receiptId },
         ...status === undefined ? {} : { status },
         ...similarReports === undefined ? {} : { similarReports },
-        ...message === undefined ? {} : { message },
         ...recommendedVersion === undefined ? {} : { recommendedVersion },
         ...trackingUrl === undefined ? {} : { trackingUrl },
         ...caseId === undefined ? {} : { caseId },
@@ -79,8 +76,7 @@ export class ExperienceUploader {
             };
             if (merged.status !== previous.status
                 || merged.updatedAt !== previous.updatedAt
-                || merged.recommendedVersion !== previous.recommendedVersion
-                || merged.message !== previous.message) {
+                || merged.recommendedVersion !== previous.recommendedVersion) {
                 this.store.appendReceipt(merged);
                 changed.push(merged);
             }
@@ -103,7 +99,7 @@ export class ExperienceUploader {
             signal: AbortSignal.timeout(this.config.requestTimeoutMs),
         });
         if (!response.ok) {
-            throw new Error(`ingest returned HTTP ${response.status}`);
+            throw new Error('feedback service did not accept the closed packet');
         }
         const contentType = response.headers.get('content-type') ?? '';
         const body = contentType.includes('application/json') ? await response.json() : undefined;

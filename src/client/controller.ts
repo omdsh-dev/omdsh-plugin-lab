@@ -3,14 +3,14 @@ import type { ClientRemote } from '@deepseek-ai/dsh-api-remotes/client'
 import type { MessageId } from '@deepseek-ai/dsh-client-connection/client'
 import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
-import type { TrialOutcome } from '../protocol.js'
+import type { ExperienceVerdict } from '../protocol.js'
 
 /** Exact rc.6 generated command Remote surface, kept narrow for testability. */
 export type CommandsRemote = Pick<ClientRemote['commands'], 'execute'>
 
 export interface PendingResult {
   readonly messageId: MessageId
-  readonly outcome: TrialOutcome
+  readonly verdict: ExperienceVerdict
   readonly phase: 'saving' | 'local' | 'joining' | 'joined' | 'error'
   readonly text?: string
 }
@@ -47,17 +47,17 @@ export class LabController implements HostObservable<LabView> {
     this.publish({ ...this.view, active })
   }
 
-  async record(messageId: MessageId, outcome: TrialOutcome): Promise<void> {
-    this.publish({ ...this.view, pending: { messageId, outcome, phase: 'saving' } })
-    const settled = await this.execute(`/omdsh-result ${outcome}`)
+  async record(messageId: MessageId, verdict: ExperienceVerdict): Promise<void> {
+    this.publish({ ...this.view, pending: { messageId, verdict, phase: 'saving' } })
+    const settled = await this.execute(`/omdsh-result ${verdict}`)
     if (settled.ok) {
       this.publish({
         ...this.view,
         active: false,
-        pending: { messageId, outcome, phase: 'local', text: settled.text },
+        pending: { messageId, verdict, phase: 'local', text: settled.text },
       })
     } else {
-      this.publish({ ...this.view, pending: { messageId, outcome, phase: 'error', text: settled.text } })
+      this.publish({ ...this.view, pending: { messageId, verdict, phase: 'error', text: settled.text } })
     }
   }
 
@@ -78,6 +78,10 @@ export class LabController implements HostObservable<LabView> {
 
   async inbox(): Promise<string> {
     return (await this.execute('/omdsh-inbox')).text
+  }
+
+  async probe(): Promise<string> {
+    return (await this.execute('/omdsh-probe')).text
   }
 
   dismiss(): void {

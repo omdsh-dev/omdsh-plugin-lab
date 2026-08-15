@@ -4,10 +4,15 @@ import type {
 
 export class MemoryRepository implements ExperienceRepository {
   private readonly clusters = new Map<string, ClusterRecord>()
-  private readonly events = new Map<string, { event: AcceptedEvent; participantHash: string; receiptId: string; clusterKey: string }>()
+  private readonly events = new Map<string, {
+    event: AcceptedEvent
+    receiptId: string
+    clusterKey: string
+    createdAt: number
+  }>()
   private readonly receipts = new Map<string, string>()
 
-  async ingest(event: AcceptedEvent, participantHash: string, key: string, symptom: string): Promise<Ingested> {
+  async ingest(event: AcceptedEvent, key: string, symptom: string): Promise<Ingested> {
     const existing = this.events.get(event.eventId)
     if (existing !== undefined) {
       const receipt = await this.receipt(existing.receiptId)
@@ -18,22 +23,26 @@ export class MemoryRepository implements ExperienceRepository {
     let cluster = this.clusters.get(key)
     if (cluster === undefined) {
       cluster = {
-        id: crypto.randomUUID(), clusterKey: key, pluginModule: event.pluginModule,
+        id: crypto.randomUUID(),
+        clusterKey: key,
+        pluginModule: event.pluginModule,
         ...event.pluginVersion === undefined ? {} : { pluginVersion: event.pluginVersion },
-        ...event.taskId === undefined ? {} : { taskId: event.taskId },
-        symptom, status: 'received', similarReports: 0, updatedAt: now,
+        health: event.health,
+        experience: event.experience,
+        symptom,
+        status: 'received',
+        similarReports: 0,
+        updatedAt: now,
       }
     }
     const receiptId = crypto.randomUUID()
-    this.events.set(event.eventId, { event, participantHash, receiptId, clusterKey: key })
+    this.events.set(event.eventId, { event, receiptId, clusterKey: key, createdAt: now })
     this.receipts.set(receiptId, event.eventId)
-    const reporters = new Set([...this.events.values()]
-      .filter(row => row.clusterKey === key)
-      .map(row => row.participantHash))
+    const reports = [...this.events.values()].filter(row => row.clusterKey === key).length
     cluster = {
       ...cluster,
-      similarReports: reporters.size,
-      status: cluster.status === 'received' && reporters.size > 1 ? 'clustered' : cluster.status,
+      similarReports: reports,
+      status: cluster.status === 'received' && reports > 1 ? 'clustered' : cluster.status,
       updatedAt: now,
     }
     this.clusters.set(key, cluster)
@@ -61,8 +70,10 @@ export class MemoryRepository implements ExperienceRepository {
     const cluster = [...this.clusters.values()].find(row => row.id === clusterId)
     if (cluster === undefined) return undefined
     const next: ClusterRecord = {
-      ...cluster, status: 'retest-requested', recommendedVersion: update.recommendedVersion,
-      message: update.message, ...update.trackingUrl === undefined ? {} : { githubIssueUrl: update.trackingUrl },
+      ...cluster,
+      status: 'retest-requested',
+      recommendedVersion: update.recommendedVersion,
+      ...update.trackingUrl === undefined ? {} : { githubIssueUrl: update.trackingUrl },
       updatedAt: Date.now(),
     }
     this.clusters.set(next.clusterKey, next)
@@ -70,24 +81,26 @@ export class MemoryRepository implements ExperienceRepository {
   }
 
   async evidence(pluginModule: string, since: number): Promise<PluginEvidence> {
-    const events = [...this.events.values()].map(row => row.event)
-      .filter(event => event.pluginModule === pluginModule && event.occurredAt >= since)
+    const rows = [...this.events.values()]
+      .filter(row => row.event.pluginModule === pluginModule && row.createdAt >= since)
+    const events = rows.map(row => row.event)
     return {
-      pluginModule, windowDays: 30, total: events.length,
-      worked: events.filter(event => event.outcome === 'worked').length,
-      partial: events.filter(event => event.outcome === 'partial').length,
-      failed: events.filter(event => event.outcome === 'failed').length,
-      ...events.length === 0 ? {} : { updatedAt: Math.max(...events.map(event => event.occurredAt)) },
+      pluginModule,
+      windowDays: 30,
+      total: events.length,
+      good: events.filter(event => event.experience === 'good').length,
+      mixed: events.filter(event => event.experience === 'mixed').length,
+      bad: events.filter(event => event.experience === 'bad').length,
+      ...events.length === 0 ? {} : { updatedAt: Math.max(...rows.map(row => row.createdAt)) },
     }
   }
 
-  async verifyRetest(receiptId: string, worked: boolean): Promise<ClusterRecord | undefined> {
+  async verifyRetest(receiptId: string, successful: boolean): Promise<ClusterRecord | undefined> {
     const original = await this.receipt(receiptId)
     if (original === undefined) return undefined
     const next: ClusterRecord = {
       ...original.cluster,
-      status: worked ? 'verified' : 'confirmed',
-      message: worked ? '已有用户使用原任务确认修复。' : '复测仍未通过，问题已重新确认。',
+      status: successful ? 'verified' : 'confirmed',
       updatedAt: Date.now(),
     }
     this.clusters.set(next.clusterKey, next)

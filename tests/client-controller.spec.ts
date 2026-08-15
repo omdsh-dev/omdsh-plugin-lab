@@ -19,16 +19,18 @@ describe('result-card controller', () => {
     controller.setTrialActive(true)
     expect(controller.getSnapshot()).toMatchObject({ active: true })
 
-    await controller.record('latest' as MessageId, 'failed')
-    expect(execute).toHaveBeenLastCalledWith('session', '/omdsh-result failed')
+    await controller.record('latest' as MessageId, 'bad')
+    expect(execute).toHaveBeenLastCalledWith('session', '/omdsh-result bad')
     expect(controller.getSnapshot()).toMatchObject({
       active: false,
-      pending: { outcome: 'failed', phase: 'local' },
+      pending: { verdict: 'bad', phase: 'local' },
     })
 
     await controller.join()
     expect(execute).toHaveBeenLastCalledWith('session', '/omdsh-join latest')
     expect(controller.getSnapshot().pending).toMatchObject({ phase: 'joined', text: '问题回执：PL-1234' })
+    await expect(controller.probe()).resolves.toBe('问题回执：PL-1234')
+    expect(execute).toHaveBeenLastCalledWith('session', '/omdsh-probe')
   })
 
   it('surfaces rc.6 transport failures and undefined command admissions', async () => {
@@ -38,7 +40,7 @@ describe('result-card controller', () => {
     }))
     const controller = new LabController({ execute: failed }, 'session' as SessionId)
     controller.setTrialActive(true)
-    await controller.record('message' as MessageId, 'partial')
+    await controller.record('message' as MessageId, 'mixed')
     expect(controller.getSnapshot().pending).toMatchObject({
       phase: 'error', text: '连接已断开 (disconnected)',
     })
@@ -46,7 +48,7 @@ describe('result-card controller', () => {
     const absent: CommandsRemote['execute'] = vi.fn(async () => ({ ok: true as const, value: undefined }))
     const second = new LabController({ execute: absent }, 'session' as SessionId)
     second.setTrialActive(true)
-    await second.record('message' as MessageId, 'failed')
+    await second.record('message' as MessageId, 'bad')
     expect(second.getSnapshot().pending).toMatchObject({
       phase: 'error', text: '命令未被 DSH 接收。',
     })

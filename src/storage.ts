@@ -1,11 +1,9 @@
-import { appendFileSync, chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { appendFileSync, chmodSync, mkdirSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
 import type {
-  IngestReceipt, LocalCrashRecord, LocalExperienceRecord, ReceiptSeen, ShareRequest,
+  IngestReceipt, LocalFeedbackRecord, ReceiptSeen, ShareRequest,
 } from './protocol.js'
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu
 
 function readLines<T>(path: string): T[] {
   let text: string
@@ -37,66 +35,36 @@ export function defaultDataDir(): string {
   return join(dshHome, 'omdsh-plugin-lab')
 }
 
-export class ExperienceStore {
+/** Local outbox for the same closed packet sent over the wire. It stores no logs or identifiers. */
+export class FeedbackStore {
   readonly dataDir: string
   readonly eventsPath: string
-  readonly crashesPath: string
   readonly receiptsPath: string
   readonly shareRequestsPath: string
   readonly receiptSeenPath: string
-  private readonly identityPath: string
 
   constructor(dataDir = defaultDataDir()) {
     if (!isAbsolute(dataDir)) throw new TypeError('plugin-lab: dataDir must be an absolute path')
     this.dataDir = dataDir
-    this.eventsPath = join(dataDir, 'events.ndjson')
-    this.crashesPath = join(dataDir, 'crashes.ndjson')
-    this.receiptsPath = join(dataDir, 'receipts.ndjson')
-    this.shareRequestsPath = join(dataDir, 'share-requests.ndjson')
-    this.receiptSeenPath = join(dataDir, 'receipt-seen.ndjson')
-    this.identityPath = join(dataDir, '.install-id')
+    this.eventsPath = join(dataDir, 'feedback-v2.ndjson')
+    this.receiptsPath = join(dataDir, 'receipts-v2.ndjson')
+    this.shareRequestsPath = join(dataDir, 'share-requests-v2.ndjson')
+    this.receiptSeenPath = join(dataDir, 'receipt-seen-v2.ndjson')
     mkdirSync(dataDir, { recursive: true, mode: 0o700 })
     chmodSync(dataDir, 0o700)
   }
 
-  participantId(): string {
-    try {
-      const existing = readFileSync(this.identityPath, 'utf8').trim()
-      if (UUID.test(existing)) return existing
-    } catch (error: unknown) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
-    }
-    return this.resetParticipantId()
-  }
-
-  resetParticipantId(): string {
-    const id = crypto.randomUUID()
-    writeFileSync(this.identityPath, `${id}\n`, { encoding: 'utf8', mode: 0o600 })
-    chmodSync(this.identityPath, 0o600)
-    return id
-  }
-
-  append(record: LocalExperienceRecord): void {
+  append(record: LocalFeedbackRecord): void {
     appendJson(this.eventsPath, record)
-  }
-
-  /** This deliberately uses synchronous append: the process may exit immediately afterward. */
-  appendCrash(record: LocalCrashRecord): void {
-    appendJson(this.crashesPath, record)
-  }
-
-  crashRecords(trialId?: string): LocalCrashRecord[] {
-    const records = readLines<LocalCrashRecord>(this.crashesPath)
-    return trialId === undefined ? records : records.filter(record => record.trialId === trialId)
   }
 
   appendReceipt(receipt: IngestReceipt): void {
     appendJson(this.receiptsPath, receipt)
   }
 
-  requestShare(eventId: string, shareNote = false): void {
-    if (this.record(eventId) === undefined) throw new Error(`unknown local event: ${eventId}`)
-    appendJson(this.shareRequestsPath, { eventId, requestedAt: Date.now(), shareNote } satisfies ShareRequest)
+  requestShare(eventId: string): void {
+    if (this.record(eventId) === undefined) throw new Error('unknown local feedback event')
+    appendJson(this.shareRequestsPath, { eventId } satisfies ShareRequest)
   }
 
   markSeen(receipt: IngestReceipt): void {
@@ -105,23 +73,22 @@ export class ExperienceStore {
       receiptId: receipt.receiptId,
       ...receipt.status === undefined ? {} : { status: receipt.status },
       ...receipt.updatedAt === undefined ? {} : { updatedAt: receipt.updatedAt },
-      seenAt: Date.now(),
     } satisfies ReceiptSeen)
   }
 
-  records(): LocalExperienceRecord[] {
-    return readLines<LocalExperienceRecord>(this.eventsPath)
+  records(): LocalFeedbackRecord[] {
+    return readLines<LocalFeedbackRecord>(this.eventsPath)
   }
 
   receipts(): IngestReceipt[] {
     return readLines<IngestReceipt>(this.receiptsPath)
   }
 
-  record(eventId: string): LocalExperienceRecord | undefined {
+  record(eventId: string): LocalFeedbackRecord | undefined {
     return this.records().findLast(record => record.event.eventId === eventId)
   }
 
-  latestLocalRecord(): LocalExperienceRecord | undefined {
+  latestLocalRecord(): LocalFeedbackRecord | undefined {
     return this.records().at(-1)
   }
 
@@ -143,19 +110,13 @@ export class ExperienceStore {
     })
   }
 
-  pending(): LocalExperienceRecord[] {
+  pending(): LocalFeedbackRecord[] {
     const delivered = new Set(this.receipts().map(receipt => receipt.eventId))
-    const requests = new Map<string, ShareRequest>()
-    for (const request of readLines<ShareRequest>(this.shareRequestsPath)) requests.set(request.eventId, request)
+    const requests = new Set(readLines<ShareRequest>(this.shareRequestsPath).map(row => row.eventId))
     return this.records().flatMap(record => {
       if (delivered.has(record.event.eventId)) return []
-      const request = requests.get(record.event.eventId)
-      if (!record.requestedShare && request === undefined) return []
-      return [{
-        ...record,
-        requestedShare: true,
-        shareNote: record.shareNote || request?.shareNote === true,
-      }]
+      if (!record.requestedShare && !requests.has(record.event.eventId)) return []
+      return [{ ...record, requestedShare: true }]
     })
   }
 }

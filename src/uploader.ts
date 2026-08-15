@@ -1,6 +1,6 @@
-import type { IngestReceipt, LocalExperienceRecord, ReceiptStatus } from './protocol.js'
+import type { IngestReceipt, LocalFeedbackRecord, ReceiptStatus } from './protocol.js'
 import { uploadPayload } from './protocol.js'
-import type { ExperienceStore } from './storage.js'
+import type { FeedbackStore } from './storage.js'
 
 export interface UploaderConfig {
   readonly ingestUrl: string
@@ -15,7 +15,6 @@ function optionalString(value: unknown): string | undefined {
 function parseReceipt(eventId: string, value: unknown): IngestReceipt {
   const row = typeof value === 'object' && value !== null ? value as Record<string, unknown> : {}
   const receiptId = optionalString(row.receiptId)
-  const message = optionalString(row.message)
   const recommendedVersion = optionalString(row.recommendedVersion)
   const trackingUrl = optionalString(row.trackingUrl)
   const caseId = optionalString(row.caseId)
@@ -35,11 +34,9 @@ function parseReceipt(eventId: string, value: unknown): IngestReceipt {
     : undefined
   return {
     eventId,
-    receivedAt: Date.now(),
     ...receiptId === undefined ? {} : { receiptId },
     ...status === undefined ? {} : { status },
     ...similarReports === undefined ? {} : { similarReports },
-    ...message === undefined ? {} : { message },
     ...recommendedVersion === undefined ? {} : { recommendedVersion },
     ...trackingUrl === undefined ? {} : { trackingUrl },
     ...caseId === undefined ? {} : { caseId },
@@ -51,7 +48,7 @@ function parseReceipt(eventId: string, value: unknown): IngestReceipt {
 
 export class ExperienceUploader {
   constructor(
-    private readonly store: ExperienceStore,
+    private readonly store: FeedbackStore,
     private readonly config: UploaderConfig,
   ) {}
 
@@ -87,8 +84,7 @@ export class ExperienceUploader {
       }
       if (merged.status !== previous.status
         || merged.updatedAt !== previous.updatedAt
-        || merged.recommendedVersion !== previous.recommendedVersion
-        || merged.message !== previous.message) {
+        || merged.recommendedVersion !== previous.recommendedVersion) {
         this.store.appendReceipt(merged)
         changed.push(merged)
       }
@@ -96,7 +92,7 @@ export class ExperienceUploader {
     return changed
   }
 
-  private async send(record: LocalExperienceRecord): Promise<IngestReceipt> {
+  private async send(record: LocalFeedbackRecord): Promise<IngestReceipt> {
     const headers: Record<string, string> = {
       'content-type': 'application/json',
       'idempotency-key': record.event.eventId,
@@ -111,7 +107,7 @@ export class ExperienceUploader {
       signal: AbortSignal.timeout(this.config.requestTimeoutMs),
     })
     if (!response.ok) {
-      throw new Error(`ingest returned HTTP ${response.status}`)
+      throw new Error('feedback service did not accept the closed packet')
     }
     const contentType = response.headers.get('content-type') ?? ''
     const body: unknown = contentType.includes('application/json') ? await response.json() : undefined

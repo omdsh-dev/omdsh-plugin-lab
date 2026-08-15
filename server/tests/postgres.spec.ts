@@ -6,22 +6,19 @@ import { describe, expect, it } from 'vitest'
 import { PostgresRepository } from '../src/postgres.js'
 import type { AcceptedEvent } from '../src/types.js'
 
-function accepted(eventId = crypto.randomUUID(), participant = 'participant'): AcceptedEvent {
+function accepted(eventId = crypto.randomUUID()): AcceptedEvent {
   return {
-    eventId, participantId: crypto.randomUUID(), occurredAt: Date.now(), trialId: crypto.randomUUID(),
-    pluginModule: '@example/search', pluginVersion: '1.0.0', taskId: 'repo-search',
-    dshVersion: '0.1.0-rc.6', outcome: 'failed', retention: 'remove', loaderHealth: 'active',
-    assistantMessages: 1, toolErrors: 1, agentErrors: 0, processCrashes: 1,
-    crashes: [{
-      fingerprint: '0123456789abcdef0123', name: 'TypeError', origin: 'uncaughtException',
-      frame: 'node_modules/@example/search/dist/index.js:10:2',
-    }],
-    durationMs: 100, note: participant,
+    eventId,
+    pluginModule: '@example/search',
+    pluginVersion: '1.0.0',
+    health: 'error',
+    experience: 'bad',
+    source: 'user_confirmed',
   }
 }
 
-describe('PostgreSQL repository', () => {
-  it('runs the migration and persists the idempotent receipt lifecycle', async () => {
+describe('PostgreSQL strict v2 repository', () => {
+  it('persists only finite v2 signals and an idempotent receipt lifecycle', async () => {
     const database = newDb()
     for (const file of readdirSync(resolve('server/migrations')).filter(file => file.endsWith('.sql')).sort()) {
       database.public.none(readFileSync(resolve('server/migrations', file), 'utf8'))
@@ -30,22 +27,30 @@ describe('PostgreSQL repository', () => {
     const pool = new adapter.Pool() as unknown as PgPool
     const repository = new PostgresRepository(pool)
     const event = accepted()
-    const first = await repository.ingest(event, 'hash-a', 'cluster-key', 'tool-error')
-    const duplicate = await repository.ingest(event, 'hash-a', 'cluster-key', 'tool-error')
+    const first = await repository.ingest(event, 'cluster-key', 'health-error')
+    const duplicate = await repository.ingest(event, 'cluster-key', 'health-error')
     expect(duplicate.receipt.receiptId).toBe(first.receipt.receiptId)
-    await repository.ingest(accepted(), 'hash-b', 'cluster-key', 'tool-error')
+    await repository.ingest(accepted(), 'cluster-key', 'health-error')
     await expect(repository.receipt(first.receipt.receiptId)).resolves.toMatchObject({
-      cluster: { status: 'clustered', similarReports: 2 },
+      cluster: { status: 'clustered', similarReports: 2, health: 'error', experience: 'bad' },
     })
-    const released = await repository.release(first.receipt.cluster.id, {
-      recommendedVersion: '1.0.1', message: '请复测。',
-    })
+    const released = await repository.release(first.receipt.cluster.id, { recommendedVersion: '1.0.1' })
     expect(released).toMatchObject({ status: 'retest-requested', recommendedVersion: '1.0.1' })
     await repository.verifyRetest(first.receipt.receiptId, true)
     await expect(repository.receipt(first.receipt.receiptId)).resolves.toMatchObject({
       cluster: { status: 'verified' },
     })
-    await expect(repository.evidence('@example/search', 0)).resolves.toMatchObject({ total: 2, failed: 2 })
+    await expect(repository.evidence('@example/search', 0)).resolves.toMatchObject({
+      total: 2, good: 0, mixed: 0, bad: 2,
+    })
+
+    const columns = database.public.many(`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_name = 'feedback_events_v2'
+    `).map(row => row.column_name)
+    expect(columns).not.toEqual(expect.arrayContaining([
+      'participant_id', 'occurred_at', 'task_id', 'note', 'crash_signatures', 'environment',
+    ]))
     await pool.end()
   })
 })

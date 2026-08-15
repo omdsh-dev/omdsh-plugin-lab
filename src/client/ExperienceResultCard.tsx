@@ -2,12 +2,12 @@ import { useState, type CSSProperties } from 'react'
 import type { MessageId } from '@deepseek-ai/dsh-client-connection/client'
 import type { ConversationNode } from '@deepseek-ai/dsh-client-runtime/client'
 import type { InjectFace, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import type { TrialOutcome } from '../protocol.js'
+import type { ExperienceVerdict } from '../protocol.js'
 import type { LabController, LabView } from './controller.js'
 
 export interface LabInjected {
   hooks: { pluginLab: LabController }
-  record: (messageId: MessageId, outcome: TrialOutcome) => Promise<void>
+  record: (messageId: MessageId, verdict: ExperienceVerdict) => Promise<void>
   join: () => Promise<void>
   dismiss: () => void
 }
@@ -34,9 +34,9 @@ const choiceStyle: CSSProperties = {
   padding: '7px 9px', background: 'transparent', color: 'inherit', cursor: 'pointer',
 }
 
-function shareLabel(outcome: TrialOutcome): string {
-  if (outcome === 'worked') return '贡献匿名实测'
-  if (outcome === 'partial') return '查找相似问题'
+function shareLabel(verdict: ExperienceVerdict): string {
+  if (verdict === 'good') return '贡献聚合实测'
+  if (verdict === 'mixed') return '查找相似反馈'
   return '加入并等待修复'
 }
 
@@ -70,12 +70,15 @@ export function ExperienceResultCard({
       </button>
       {open && (
         <span role="dialog" aria-label="插件体验结果" style={panelStyle}>
-          <strong style={{ display: 'block', marginBottom: 9 }}>这次插件把事情做成了吗？</strong>
+          <strong style={{ display: 'block', marginBottom: 9 }}>你觉得这个插件好用吗？</strong>
+          <span style={{ display: 'block', marginBottom: 9, color: 'var(--dsw-alias-label-secondary)' }}>
+            Agent 只知道运行状态，不会读取会话或日志替你判断。
+          </span>
           {pending === undefined && (
             <span style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 7 }}>
-              <button type="button" style={choiceStyle} onClick={() => { void record(messageId, 'worked') }}>做成了</button>
-              <button type="button" style={choiceStyle} onClick={() => { void record(messageId, 'partial') }}>做了一部分</button>
-              <button type="button" style={choiceStyle} onClick={() => { void record(messageId, 'failed') }}>没做成</button>
+              <button type="button" style={choiceStyle} onClick={() => { void record(messageId, 'good') }}>好用</button>
+              <button type="button" style={choiceStyle} onClick={() => { void record(messageId, 'mixed') }}>一般</button>
+              <button type="button" style={choiceStyle} onClick={() => { void record(messageId, 'bad') }}>不好用</button>
             </span>
           )}
           {pending !== undefined && (
@@ -85,7 +88,7 @@ export function ExperienceResultCard({
               </span>
               {pending.phase === 'local' && (
                 <button type="button" style={{ ...choiceStyle, background: 'var(--dsw-alias-interactive-bg-primary)' }} onClick={() => { void join() }}>
-                  {shareLabel(pending.outcome)}
+                  {shareLabel(pending.verdict)}
                 </button>
               )}
               {(pending.phase === 'joined' || pending.phase === 'error') && (
@@ -94,7 +97,7 @@ export function ExperienceResultCard({
             </span>
           )}
           <small style={{ display: 'block', marginTop: 10, color: 'var(--dsw-alias-label-tertiary)' }}>
-            第一步只保存在本机；加入跟进仅发送插件、版本、结果与无内容运行指标，不发送对话正文。
+            第一步只保存在本机；加入跟进只发送插件、版本、状态枚举和你的选择。网络传输并非绝对匿名。
           </small>
         </span>
       )}

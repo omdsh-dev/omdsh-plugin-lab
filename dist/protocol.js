@@ -1,14 +1,7 @@
-/** Public, versioned protocol shared by the DSH plugin and an ingest backend. */
-export const EXPERIENCE_SCHEMA_VERSION = 1;
-/** Remove the local-only note unless the user explicitly chose --share-note. */
+/** Closed, zero-content protocol shared by the DSH plugin and ingest backend. */
+export const FEEDBACK_SCHEMA_VERSION = 2;
+/** The local record is already the exact network packet; no projection can add fields. */
 export function uploadPayload(record) {
-    if (record.shareNote || record.event.feedback.note === undefined)
-        return record.event;
-    const { note: _localOnlyNote, ...feedback } = record.event.feedback;
-    return {
-        ...record.event,
-        feedback,
-        sharing: { transcript: 'none', noteIncluded: false },
-    };
+    return record.event;
 }
 //# sourceMappingURL=protocol.js.map

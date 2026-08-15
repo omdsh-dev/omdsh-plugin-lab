@@ -1,39 +1,32 @@
 # Oh My DSH Plugin Lab
 
-Plugin Lab 是 DeepSeek Harness 的插件试用与体验反馈闭环。它不要求用户“上传评价”，而是在一次真实试用之后帮助用户：
+Plugin Lab 0.3 是 DeepSeek Harness rc.6 的零内容插件探活与体验反馈闭环。
 
-- 记录这次插件是否把事情做成；
-- 查找相似问题并获得问题回执；
-- 在修复版本发布时收到复测邀请；
-- 用原任务复测，让市场证据随版本更新。
+它把两件事严格分开：
 
-默认只保存在本机。只有用户点击“查找相似问题 / 加入并等待修复”，或明确运行 `/omdsh-join`，才会发送不含会话内容的结构化事件。
+- DSH Host 可以判断插件当前是否正常运行；
+- “好用 / 一般 / 不好用”只能由用户确认，Agent 不得读取会话或日志代替用户推断。
 
-## 用户体验
+## 体验流程
 
-1. 用户用 `/omdsh-start <plugin>#<version> [task-id]` 开始一次单插件 Trial。
-2. Agent 完成后，最新回复旁出现“体验结果”。
-3. 用户选择“做成了 / 做了一部分 / 没做成”。这一步只写入本机。
-4. 结果卡提供与用户目标对应的动作：
-   - 做成了：`贡献匿名实测`
-   - 做了一部分：`查找相似问题`
-   - 没做成：`加入并等待修复`
-5. 分享后立即返回问题回执、相似报告数和当前状态。
-6. Composer 左侧的“反馈进展”或 `/omdsh-inbox` 显示确认、Issue、修复版本与复测邀请。
-7. `/omdsh-retest` 把复测结果关联回原回执；成功复测会把原问题标记为 `verified`。
+1. `/omdsh-start <plugin>#<version>` 选择本次试用的公开插件。
+2. 用户随时点击 Composer 左侧的“插件探活”，本地查看 `OK / 暂不可用 / 异常 / 未知`。
+3. Agent 可以调用零参数工具 `omdsh_analyze_plugin_experience`，但只会得到运行状态和 `experience=unknown`。
+4. 最新回复旁出现体验卡，由用户选择“好用 / 一般 / 不好用”。这一步只保存在本机。
+5. 用户再次点击加入跟进或运行 `/omdsh-join latest`，才会发送屏幕上已经说明的有限字段。
+6. 后端按插件、版本和状态聚合；达到阈值后创建 GitHub Issue，并通过回执邀请用户复测。
 
 ```mermaid
 flowchart LR
-  A["按任务选择插件"] --> B["隔离 Trial"]
-  B --> C["Agent 产生结果"]
-  C --> D["结果先存本机"]
-  D -->|"用户明确加入"| E["匿名结构化事件"]
-  E --> F["后端聚类与问题回执"]
-  F -->|"达到阈值"| G["聚合 GitHub Issue"]
-  G --> H["修复版本发布"]
-  H --> I["通知原用户复测"]
-  I --> J["市场实测证据更新"]
-  J --> A
+  A["DSH Host Loader/Fiber"] --> B["本地状态枚举"]
+  B --> C["一键探活"]
+  B --> D["Agent 零参数工具"]
+  D --> E["experience = unknown"]
+  E --> F["用户确认好用 / 一般 / 不好用"]
+  F --> G["单独同意发送"]
+  G --> H["后端有限枚举聚合"]
+  H -->|"达到阈值"| I["GitHub 聚合 Issue"]
+  I --> J["修复与复测回执"]
 ```
 
 ## 安装开发版本
@@ -41,140 +34,120 @@ flowchart LR
 ```sh
 pnpm install
 pnpm pack:release
-dsh plugin --profile web add ./oh-my-dsh-plugin-lab-0.2.2.tgz
+dsh plugin --profile web add ./oh-my-dsh-plugin-lab-0.3.0.tgz
 dsh --profile web
 ```
 
-Plugin Lab 是一个标准 DSH Bundle：`package.json` 通过 `dsh.bundle.patch` 声明 `cordis.patch.yml`，同一个包还通过 `dsh.client` 提供 Web 结果卡和收件箱入口。
+Plugin Lab 是标准 DSH Bundle：`package.json` 通过 `dsh.bundle.patch` 声明 Host 插件，通过 `dsh.client` 提供 Web 探活、结果卡和收件箱。
 
-`0.2.2` 的 DSH Peer 契约从 `0.1.0-rc.6` 起，已完成全新 Profile 安装、Host 启动、Web Client Loader 注册、Slot 生命周期、组件交互和真实浏览器加载验证。
+版本 `0.3.0` 的 Peer 契约从 DSH `0.1.0-rc.6` 起。完整测试会执行真实的 rc.6 打包、安装、Host/Web 启动、Client Loader 注册和卸载。
 
-## 主要命令
+## 命令与 Agent 工具
 
-| 命令 | 作用 |
+| 接口 | 作用 |
 |---|---|
-| `/omdsh-start <module>[#version] [task-id]` | 开始一次单目标插件 Trial |
-| `/omdsh-result <worked\|partial\|failed> [note]` | 只在本机记录结果 |
-| `/omdsh-join <latest\|event-id> [--share-note]` | 明确加入匿名问题跟进 |
-| `/omdsh-inbox [--peek]` | 拉取并查看新的处理进展 |
-| `/omdsh-retest <receipt-id> <module>[#version] [task-id]` | 从回执启动修复复测 |
-| `/omdsh-status` | 查看当前 Trial、待发送记录和未读进展 |
-| `/omdsh-privacy` | 查看精确数据边界与本地路径 |
-| `/omdsh-feedback ...` | 兼容旧版的一步式入口 |
+| `/omdsh-start <module>[#version]` | 开始单插件试用；不接受任务标签或备注 |
+| `/omdsh-probe` | 本地读取当前目标的 Host 生命周期状态 |
+| `/omdsh-result <good\|mixed\|bad>` | 用户确认体验，只保存本机 |
+| `/omdsh-join <latest\|event-id>` | 单独同意发送有限字段 |
+| `/omdsh-inbox [--peek]` | 查看聚合问题、修复版本与复测邀请 |
+| `/omdsh-retest <receipt-id> <module>[#version]` | 从单条回执开始复测 |
+| `/omdsh-status` | 查看本地试用、待发送和未读状态 |
+| `/omdsh-privacy` | 显示完整隐私边界 |
+| `omdsh_analyze_plugin_experience({})` | Agent 查询运行状态；输入必须为空 |
 
-## 数据边界
+## 精确数据边界
 
-本地真源位于：
+唯一允许上传的数据包为：
+
+```json
+{
+  "schemaVersion": 2,
+  "type": "feedback.signal",
+  "eventId": "随机单次 UUID",
+  "plugin": {
+    "moduleName": "marketplace-public-id",
+    "version": "1.2.3"
+  },
+  "health": "ok",
+  "experience": "good",
+  "source": "user_confirmed"
+}
+```
+
+复测时可以额外出现一个随机、单报告范围的 `retestOfReceiptId`。客户端和服务端都拒绝任何其他字段，而不是接收后脱敏。
+
+不会创建、读取或发送：
+
+- stdout、stderr、访问日志、应用日志；
+- exception、错误码、stack、frame、崩溃指纹；
+- Prompt、Assistant 回复、Agent memory、Tool 参数和结果；
+- 文件、代码、路径、URL、环境变量、配置；
+- 用户、账号、设备、安装、Session 等稳定标识；
+- 客户端时间、locale、OS、架构、DSH/Node 版本、任务标签、计数和时延；
+- 备注、理由或任何自由文本反馈。
+
+本地 v2 文件只有：
 
 ```text
 $DSH_HOME/omdsh-plugin-lab/
-  .install-id
-  crashes.ndjson
-  events.ndjson
-  share-requests.ndjson
-  receipts.ndjson
-  receipt-seen.ndjson
+  feedback-v2.ndjson
+  share-requests-v2.ndjson
+  receipts-v2.ndjson
+  receipt-seen-v2.ndjson
 ```
 
-目录权限为 `0700`，文件权限为 `0600`。插件不会收集或发送：
+目录权限为 `0700`，文件权限为 `0600`。升级不会读取或补传旧版 `.install-id`、`events.ndjson` 或 `crashes.ndjson`；历史文件不会被自动删除。
 
-- Prompt 或 Assistant 回复正文；
-- Tool 参数与结果；
-- 工作目录或 DSH Session ID；
-- 文件内容。
+网络传输天然会让服务器或中间层观察 IP、时间等元数据，因此项目只承诺“载荷零内容、无身份字段”，不宣称绝对匿名。生产部署必须关闭代理、网关、WAF、应用和数据库的请求体日志，并不得把 IP/User-Agent 写入业务数据。
 
-匿名事件只包含插件与版本、DSH/Node/系统版本、任务标签、Loader 状态、计数与时序、用户选择的结果。文字备注默认只留本地，只有 `--share-note` 才发送；服务端共享备注最长保留 30 天，并在后续写入时清理过期值。
-
-进行中的 Trial 遇到未捕获异常时，会先把脱敏崩溃信号同步写入 `crashes.ndjson`，以便 DSH 重启后恢复。它只含错误类型、受限错误码、归一化首帧与稳定指纹，不含原始错误信息、完整堆栈、函数名或绝对路径。监听使用 Node 的 `uncaughtExceptionMonitor`，不会捕获异常、阻止退出或改变程序原有崩溃行为；这些信号仍只有在用户明确加入跟进后才会上传。
+更完整的可验证不变量和攻击测试见 [PRIVACY.md](./PRIVACY.md)。
 
 ## 启用中央反馈
 
-Bundle 默认关闭上传。部署者必须配置接收地址：
+Bundle 默认关闭网络发送：
 
 ```yaml
 - id: omdsh-plugin-lab
   config:
-    allowAnonymousShare: true
+    allowShare: true
     ingestUrl: https://feedback.example.com/v1/experience-events
     authorizationEnv: OMDSH_PLUGIN_LAB_TOKEN
-    profileLabel: plugin-lab
     requestTimeoutMs: 5000
     retryIntervalMs: 30000
 ```
 
-即使部署允许分享，每一次 Trial 仍要由用户点击加入或运行 `/omdsh-join`。后来开启配置不会补传历史本地反馈。
+部署开启发送能力不等于用户同意。每条记录仍要由用户单独运行 `/omdsh-join`；拒绝发送不影响插件功能。
 
-## 后端
+## 后端与 GitHub 飞轮
 
-`server/` 是可自托管的 Node.js + PostgreSQL 接收器，提供：
+`server/` 提供 Node.js + PostgreSQL 接收器：
 
-- 事件幂等写入；
-- 匿名安装 ID 的 HMAC 哈希；
-- 按插件、版本、DSH 版本、任务和症状聚类；
-- 独立安装数统计；
-- 带 Follow Token 的问题回执；
-- 修复发布和复测状态更新；
-- 最近 30 天市场实测证据；
-- 达到阈值后创建去内容化的 GitHub 聚合 Issue。
+- 只接受 schema v2，未知字段 fail closed；
+- 请求体上限 1 KiB，错误响应不回显输入或异常；
+- 不存 IP、User-Agent、原始请求体或客户端时间；
+- 不使用用户、安装或稳定匿名 ID，因此统计口径是“报告数”，不是“独立用户数”；
+- 按公开插件、版本、health 和 experience 聚合；
+- 默认同类报告达到 5 条后才创建 GitHub 聚合 Issue；
+- GitHub 不接收单条反馈或回执 ID；
+- Follow Token 只关联一条报告，用于返回修复与复测状态。
 
-### 本机启动
-
-```sh
-docker compose up -d postgres
-cp server/.env.example .env
-set -a && source .env && set +a
-pnpm server:build
-pnpm server:migrate
-pnpm server:start
-```
-
-生产环境至少需要：
+生产环境需要：
 
 ```text
 DATABASE_URL
 PUBLIC_BASE_URL
-PRIVACY_HASH_SECRET
 FOLLOW_SECRET
 ADMIN_TOKEN
 ```
 
-可选的 GitHub 聚合：
+可选 GitHub 配置：
 
 ```text
 GITHUB_TOKEN=<具有目标仓库 Issues 写权限的 token>
 GITHUB_REPOSITORY=omdsh-dev/omdsh-plugin-lab
-GITHUB_REPORT_THRESHOLD=3
+GITHUB_REPORT_THRESHOLD=5
 ```
-
-默认同一聚类达到 3 个独立匿名安装后才创建 Issue。GitHub 中不会出现“一条反馈一个 Issue”。Issue 只含聚合字段，不含匿名 ID、备注或会话内容。
-
-### API
-
-| Method | Path | 用途 |
-|---|---|---|
-| `POST` | `/v1/experience-events` | 接收一次显式分享 |
-| `GET` | `/v1/receipts/:id` | 使用 `X-OMDSH-Follow-Token` 查询进展 |
-| `POST` | `/v1/admin/clusters/:id/release` | 发布修复版本并邀请复测 |
-| `GET` | `/v1/plugins/:module/evidence` | 返回最近 30 天市场证据 |
-| `GET` | `/healthz` | 健康检查 |
-
-管理员发布修复：
-
-```sh
-curl -X POST https://feedback.example.com/v1/admin/clusters/<cluster-id>/release \
-  -H "Authorization: Bearer $ADMIN_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"recommendedVersion":"0.3.2","message":"修复已发布，请用原任务复测。","trackingUrl":"https://github.com/org/repo/issues/42"}'
-```
-
-## 状态机
-
-```text
-received → clustered → reported → retest-requested → verified → closed
-                   ↘ confirmed ← 复测仍失败
-```
-
-插件会在后台重试待发送记录和刷新已有回执。Follow Token 只保存在本机私有文件中，服务端不需要账号、邮箱或原始匿名安装 ID 即可把修复状态送回最初参与者。
 
 ## 验证
 
@@ -182,10 +155,4 @@ received → clustered → reported → retest-requested → verified → closed
 pnpm test:all
 ```
 
-验证包含 Host 命令与 Session 集成、崩溃同步日志及重启恢复、两阶段分享、隐私投影、本地 Outbox、回执刷新、Client 结果卡真实点击、rc.6 Slot 生命周期、聚类/发布/复测领域逻辑、服务端类型检查，以及真实的 `dsh plugin add`、rc.6 Client Loader 产物执行、Profile 启动和移除生命周期。
-
-## 当前边界
-
-- Plugin Lab 负责试用与证据闭环，不自动判断任意 Tool 属于哪个第三方插件；一次 Trial 的目标插件是归因真源。
-- 市场页面尚未包含在本仓库；`/v1/plugins/:module/evidence` 已提供其数据接口。
-- “反馈进展”目前是 DSH 内拉取式收件箱，不要求邮箱或账号；邮件、Slack 等外部通知应由部署方在后端事件上另接通道。
+验证覆盖：闭合输入/输出 Schema、Loader 状态映射、Agent 零参数工具、内容非干涉金丝雀、无崩溃监听器、两阶段同意、Client 真实点击、后端未知字段拒绝、PostgreSQL v2 列审计、聚合阈值、回执/复测，以及真实 DSH rc.6 安装与启动生命周期。
