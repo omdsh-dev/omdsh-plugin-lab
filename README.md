@@ -41,11 +41,13 @@ flowchart LR
 ```sh
 pnpm install
 pnpm pack:release
-dsh plugin --profile web add ./oh-my-dsh-plugin-lab-0.2.0.tgz
+dsh plugin --profile web add ./oh-my-dsh-plugin-lab-0.2.1.tgz
 dsh --profile web
 ```
 
 Plugin Lab 是一个标准 DSH Bundle：`package.json` 通过 `dsh.bundle.patch` 声明 `cordis.patch.yml`，同一个包还通过 `dsh.client` 提供 Web 结果卡和收件箱入口。
+
+`0.2.1` 已针对 DeepSeek Harness `0.1.0-rc.6` 完成全新 Profile 安装、Host 启动、Web Client Loader 注册和真实浏览器加载验证。
 
 ## 主要命令
 
@@ -177,7 +179,7 @@ received → clustered → reported → retest-requested → verified → closed
 pnpm test:all
 ```
 
-验证包含 Host 命令与 Session 集成、两阶段分享、隐私投影、本地 Outbox、回执刷新、Client 结果卡控制器、聚类/发布/复测领域逻辑、服务端类型检查，以及真实的 `dsh plugin add`、Profile 启动和移除生命周期。
+验证包含 Host 命令与 Session 集成、两阶段分享、隐私投影、本地 Outbox、回执刷新、Client 结果卡控制器、聚类/发布/复测领域逻辑、服务端类型检查，以及真实的 `dsh plugin add`、rc.6 Client Loader 产物执行、Profile 启动和移除生命周期。
 
 ## 当前边界
 

@@ -3,6 +3,8 @@ import { tmpdir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 import { spawn, spawnSync } from 'node:child_process'
 import process from 'node:process'
+import * as React from 'react'
+import * as ReactJsxRuntime from 'react/jsx-runtime'
 
 const project = resolve(import.meta.dirname, '..')
 const root = mkdtempSync(join(tmpdir(), 'omdsh-plugin-lab-e2e-'))
@@ -38,6 +40,7 @@ if (installedManifest.exports?.['./client']?.default !== './dist/client.js') {
 if (installedManifest.dsh?.client?.platform !== 'web') {
   throw new Error('installed package does not declare a Web dsh.client')
 }
+assertClientRegistration(readFileSync(join(installedRoot, 'dist', 'client.js'), 'utf8'))
 const dumped = run(dsh, ['--profile', profile, '--dump-config'], project, env)
 if (!dumped.includes('omdsh-plugin-lab') || !dumped.includes('@oh-my-dsh/plugin-lab')) {
   throw new Error(`dumped config does not contain Plugin Lab\n${dumped}`)
@@ -50,6 +53,30 @@ if (removedManifest.dsh?.profile?.bundles?.includes('@oh-my-dsh/plugin-lab')) {
 }
 
 console.log(`plugin e2e passed: ${basename(tarball)}`)
+
+function assertClientRegistration(source) {
+  let registration
+  const browserWindow = {
+    __ModuleLoader__: {
+      load(value) { registration = value },
+    },
+  }
+  Function('window', source)(browserWindow)
+  if (registration?.id !== '@oh-my-dsh/plugin-lab' || typeof registration.factory !== 'function') {
+    throw new Error('client artifact did not register with the rc.6 __ModuleLoader__ protocol')
+  }
+  const modules = {
+    react: React,
+    'react/jsx-runtime': ReactJsxRuntime,
+  }
+  const client = registration.factory((id) => {
+    if (!(id in modules)) throw new Error(`client artifact requested an unexpected platform module: ${id}`)
+    return modules[id]
+  })
+  if (!Array.isArray(client.inject) || typeof client.apply !== 'function') {
+    throw new Error('registered client artifact does not expose inject and apply')
+  }
+}
 
 function run(command, args, cwd, commandEnv = process.env) {
   const result = spawnSync(command, args, {

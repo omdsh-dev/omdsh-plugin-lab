@@ -1,5 +1,32 @@
-import { useEffect, useState } from "react";
-import { jsx, jsxs } from "react/jsx-runtime";
+window.__ModuleLoader__.load({ id: "@oh-my-dsh/plugin-lab", factory: (require) => {
+var module = { exports: {} }; var exports = module.exports;
+//#region rolldown:runtime
+var __create = Object.create;
+var __defProp = Object.defineProperty;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getProtoOf = Object.getPrototypeOf;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __copyProps = (to, from, except, desc) => {
+	if (from && typeof from === "object" || typeof from === "function") for (var keys = __getOwnPropNames(from), i = 0, n = keys.length, key; i < n; i++) {
+		key = keys[i];
+		if (!__hasOwnProp.call(to, key) && key !== except) __defProp(to, key, {
+			get: ((k) => from[k]).bind(null, key),
+			enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable
+		});
+	}
+	return to;
+};
+var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", {
+	value: mod,
+	enumerable: true
+}) : target, mod));
+
+//#endregion
+let react = require("react");
+react = __toESM(react);
+let react_jsx_runtime = require("react/jsx-runtime");
+react_jsx_runtime = __toESM(react_jsx_runtime);
 
 //#region src/client/controller.ts
 const INITIAL_VIEW = Object.freeze({ active: false });
@@ -172,43 +199,43 @@ function visible(view, messageId) {
 }
 function ExperienceResultCard({ messageId, usePluginLab, observe, record, join, dismiss }) {
 	const view = usePluginLab((value) => value);
-	const [open, setOpen] = useState(false);
-	useEffect(() => observe(messageId), [messageId, observe]);
+	const [open, setOpen] = (0, react.useState)(false);
+	(0, react.useEffect)(() => observe(messageId), [messageId, observe]);
 	if (!visible(view, messageId)) return null;
 	const pending = view.pending?.messageId === messageId ? view.pending : void 0;
 	pending?.phase === "saving" || pending?.phase;
-	return /* @__PURE__ */ jsxs("span", {
+	return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
 		style: {
 			position: "relative",
 			display: "inline-flex"
 		},
-		children: [/* @__PURE__ */ jsx("button", {
+		children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
 			type: "button",
 			style: triggerStyle,
 			onClick: () => {
 				setOpen((value) => !value);
 			},
 			children: pending?.phase === "joined" ? "已加入跟进" : "体验结果"
-		}), open && /* @__PURE__ */ jsxs("span", {
+		}), open && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
 			role: "dialog",
 			"aria-label": "插件体验结果",
 			style: panelStyle,
 			children: [
-				/* @__PURE__ */ jsx("strong", {
+				/* @__PURE__ */ (0, react_jsx_runtime.jsx)("strong", {
 					style: {
 						display: "block",
 						marginBottom: 9
 					},
 					children: "这次插件把事情做成了吗？"
 				}),
-				pending === void 0 && /* @__PURE__ */ jsxs("span", {
+				pending === void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
 					style: {
 						display: "grid",
 						gridTemplateColumns: "repeat(3, 1fr)",
 						gap: 7
 					},
 					children: [
-						/* @__PURE__ */ jsx("button", {
+						/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
 							type: "button",
 							style: choiceStyle,
 							onClick: () => {
@@ -216,7 +243,7 @@ function ExperienceResultCard({ messageId, usePluginLab, observe, record, join, 
 							},
 							children: "做成了"
 						}),
-						/* @__PURE__ */ jsx("button", {
+						/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
 							type: "button",
 							style: choiceStyle,
 							onClick: () => {
@@ -224,7 +251,7 @@ function ExperienceResultCard({ messageId, usePluginLab, observe, record, join, 
 							},
 							children: "做了一部分"
 						}),
-						/* @__PURE__ */ jsx("button", {
+						/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
 							type: "button",
 							style: choiceStyle,
 							onClick: () => {
@@ -234,20 +261,20 @@ function ExperienceResultCard({ messageId, usePluginLab, observe, record, join, 
 						})
 					]
 				}),
-				pending !== void 0 && /* @__PURE__ */ jsxs("span", {
+				pending !== void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
 					style: {
 						display: "grid",
 						gap: 9
 					},
 					children: [
-						/* @__PURE__ */ jsx("span", {
+						/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
 							style: {
 								whiteSpace: "pre-wrap",
 								color: "var(--dsw-alias-label-secondary)"
 							},
 							children: pending.phase === "saving" ? "正在只存到本机…" : pending.text
 						}),
-						pending.phase === "local" && /* @__PURE__ */ jsx("button", {
+						pending.phase === "local" && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
 							type: "button",
 							style: {
 								...choiceStyle,
@@ -258,7 +285,7 @@ function ExperienceResultCard({ messageId, usePluginLab, observe, record, join, 
 							},
 							children: shareLabel(pending.outcome)
 						}),
-						(pending.phase === "joined" || pending.phase === "error") && /* @__PURE__ */ jsx("button", {
+						(pending.phase === "joined" || pending.phase === "error") && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
 							type: "button",
 							style: choiceStyle,
 							onClick: () => {
@@ -269,7 +296,7 @@ function ExperienceResultCard({ messageId, usePluginLab, observe, record, join, 
 						})
 					]
 				}),
-				/* @__PURE__ */ jsx("small", {
+				/* @__PURE__ */ (0, react_jsx_runtime.jsx)("small", {
 					style: {
 						display: "block",
 						marginTop: 10,
@@ -295,14 +322,14 @@ const button = {
 	fontSize: 12
 };
 function InboxButton({ checkInbox }) {
-	const [text, setText] = useState(null);
-	const [busy, setBusy] = useState(false);
-	return /* @__PURE__ */ jsxs("span", {
+	const [text, setText] = (0, react.useState)(null);
+	const [busy, setBusy] = (0, react.useState)(false);
+	return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
 		style: {
 			position: "relative",
 			display: "inline-flex"
 		},
-		children: [/* @__PURE__ */ jsx("button", {
+		children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
 			type: "button",
 			style: button,
 			disabled: busy,
@@ -314,7 +341,7 @@ function InboxButton({ checkInbox }) {
 				});
 			},
 			children: busy ? "检查中…" : "反馈进展"
-		}), text !== null && /* @__PURE__ */ jsx("span", {
+		}), text !== null && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
 			role: "status",
 			style: {
 				position: "absolute",
@@ -381,5 +408,10 @@ function apply(ctx) {
 }
 
 //#endregion
-export { ExperienceResultCard, InboxButton, LabController, apply, inject };
+exports.ExperienceResultCard = ExperienceResultCard;
+exports.InboxButton = InboxButton;
+exports.LabController = LabController;
+exports.apply = apply;
+exports.inject = inject;
+return module.exports; } });
 //# sourceMappingURL=client.js.map
