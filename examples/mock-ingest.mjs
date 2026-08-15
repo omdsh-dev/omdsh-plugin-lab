@@ -3,7 +3,12 @@ import { createServer } from 'node:http'
 const port = Number(process.env.PORT ?? 8787)
 const reports = new Map()
 const allowed = new Set([
-  'schemaVersion', 'type', 'eventId', 'plugin', 'health', 'experience', 'source', 'retestOfReceiptId',
+  'schemaVersion', 'type', 'eventId', 'plugin', 'health', 'experience', 'category',
+  'source', 'retestOfReceiptId',
+])
+const categories = new Set([
+  'installation', 'startup', 'invocation', 'compatibility',
+  'reliability', 'performance', 'result_quality', 'general',
 ])
 
 const server = createServer((request, response) => {
@@ -19,13 +24,14 @@ const server = createServer((request, response) => {
   request.on('end', () => {
     try {
       const event = JSON.parse(raw)
-      if (event?.schemaVersion !== 2 || event?.type !== 'feedback.signal') throw new TypeError()
+      if (event?.schemaVersion !== 3 || event?.type !== 'feedback.signal') throw new TypeError()
       if (Object.keys(event).some(key => !allowed.has(key))) throw new TypeError()
       if (event?.source !== 'user_confirmed') throw new TypeError()
+      if (!categories.has(event?.category)) throw new TypeError()
       const plugin = event?.plugin?.moduleName
       if (typeof plugin !== 'string' || plugin.length === 0) throw new TypeError()
       const version = typeof event.plugin.version === 'string' ? event.plugin.version : 'unknown'
-      const key = `${plugin}#${version}:${event.health}:${event.experience}`
+      const key = `${plugin}#${version}:${event.health}:${event.experience}:${event.category}`
       const similarReports = (reports.get(key) ?? 0) + 1
       reports.set(key, similarReports)
       return json(response, 200, {

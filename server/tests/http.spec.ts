@@ -26,12 +26,13 @@ async function endpoint(): Promise<string> {
 
 function packet() {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     type: 'feedback.signal',
     eventId: crypto.randomUUID(),
     plugin: { moduleName: '@example/plugin', version: '1.0.0' },
     health: 'ok',
     experience: 'good',
+    category: 'general',
     source: 'user_confirmed',
   }
 }

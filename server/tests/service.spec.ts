@@ -6,12 +6,13 @@ import { acceptEvent } from '../src/validation.js'
 
 function event(experience: 'good' | 'mixed' | 'bad' = 'bad', eventId = crypto.randomUUID()) {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     type: 'feedback.signal',
     eventId,
     plugin: { moduleName: '@example/search', version: '1.0.0' },
     health: 'ok',
     experience,
+    category: 'reliability',
     source: 'user_confirmed',
   } as const
 }
@@ -24,7 +25,7 @@ function service(repository = new MemoryRepository(), publisher?: { publish: (cl
   }, publisher)
 }
 
-describe('zero-content feedback flywheel service', () => {
+describe('task-agnostic summary feedback flywheel service', () => {
   it('is idempotent and returns a report-scoped follow receipt', async () => {
     const api = service()
     const input = event()
@@ -57,11 +58,13 @@ describe('zero-content feedback flywheel service', () => {
     const accepted = acceptEvent(event('bad'))
     expect(clusterKey({ ...accepted, experience: 'good' })).not.toBe(clusterKey(accepted))
     expect(clusterKey({ ...accepted, health: 'error' })).not.toBe(clusterKey(accepted))
+    expect(clusterKey({ ...accepted, category: 'performance' })).not.toBe(clusterKey(accepted))
   })
 
   it('rejects old telemetry, log-derived fields, free text and unknown fields fail closed', () => {
     const attempts = [
       { ...event(), note: 'CANARY_SECRET' },
+      { ...event(), summary: 'CANARY_PRIVATE_TASK' },
       { ...event(), log: 'CANARY_SECRET' },
       { ...event(), stack: '/Users/alice/private.ts' },
       { ...event(), participantId: crypto.randomUUID() },
@@ -70,7 +73,8 @@ describe('zero-content feedback flywheel service', () => {
       { ...event(), environment: { platform: 'darwin' } },
     ]
     for (const attempt of attempts) expect(() => acceptEvent(attempt)).toThrow('unsupported fields')
-    expect(() => acceptEvent({ ...event(), schemaVersion: 1 })).toThrow('unsupported event schema')
+    expect(() => acceptEvent({ ...event(), schemaVersion: 2 })).toThrow('unsupported event schema')
+    expect(() => acceptEvent({ ...event(), category: 'private-task-summary' })).toThrow('category is invalid')
     expect(() => acceptEvent({ ...event(), source: 'agent_inferred' })).toThrow('source is invalid')
   })
 

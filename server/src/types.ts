@@ -1,5 +1,14 @@
 export type HealthStatus = 'ok' | 'unavailable' | 'error' | 'unknown'
 export type ExperienceVerdict = 'good' | 'mixed' | 'bad'
+export type FeedbackCategory =
+  | 'installation'
+  | 'startup'
+  | 'invocation'
+  | 'compatibility'
+  | 'reliability'
+  | 'performance'
+  | 'result_quality'
+  | 'general'
 export type ClusterStatus =
   | 'received'
   | 'clustered'
@@ -10,13 +19,14 @@ export type ClusterStatus =
   | 'confirmed'
   | 'closed'
 
-/** Exact accepted v2 packet after fail-closed validation. */
+/** Exact accepted v3 packet after fail-closed validation. */
 export interface AcceptedEvent {
   readonly eventId: string
   readonly pluginModule: string
   readonly pluginVersion?: string
   readonly health: HealthStatus
   readonly experience: ExperienceVerdict
+  readonly category: FeedbackCategory
   readonly source: 'user_confirmed'
   readonly retestOfReceiptId?: string
 }
@@ -28,9 +38,10 @@ export interface ClusterRecord {
   readonly pluginVersion?: string
   readonly health: HealthStatus
   readonly experience: ExperienceVerdict
+  readonly category: FeedbackCategory
   readonly symptom: string
   readonly status: ClusterStatus
-  /** Number of reports, not unique users: strict v2 has no stable participant id. */
+  /** Number of reports, not unique users: strict v3 has no stable participant id. */
   readonly similarReports: number
   readonly githubIssueUrl?: string
   readonly recommendedVersion?: string

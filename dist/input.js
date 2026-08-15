@@ -1,9 +1,11 @@
+import { FEEDBACK_CATEGORIES, } from './protocol.js';
 const MODULE = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/u;
 const VERSION = /^[0-9A-Za-z][0-9A-Za-z.+_-]{0,63}$/u;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const VERDICTS = new Set(['good', 'mixed', 'bad']);
+const CATEGORIES = new Set(FEEDBACK_CATEGORIES);
 export const START_USAGE = 'Usage: /omdsh-start <public-module-name>[#version]';
-export const RESULT_USAGE = 'Usage: /omdsh-result <good|mixed|bad>';
+export const RESULT_USAGE = `Usage: /omdsh-result <good|mixed|bad> <${FEEDBACK_CATEGORIES.join('|')}>`;
 export const JOIN_USAGE = 'Usage: /omdsh-join <latest|event-id>';
 export const RETEST_USAGE = 'Usage: /omdsh-retest <receipt-id> <public-module-name>[#version]';
 export function parseStartInput(rawInput) {
@@ -19,11 +21,15 @@ export function parseStartInput(rawInput) {
     }
     return { plugin: { moduleName, ...version === undefined ? {} : { version } } };
 }
-export function parseVerdict(rawInput) {
-    const value = rawInput.trim();
-    if (!VERDICTS.has(value))
+export function parseResultInput(rawInput) {
+    const parts = rawInput.trim().split(/\s+/u).filter(Boolean);
+    if (parts.length !== 2)
         throw new TypeError(RESULT_USAGE);
-    return value;
+    const [verdict, category] = parts;
+    if (!VERDICTS.has(verdict)
+        || !CATEGORIES.has(category))
+        throw new TypeError(RESULT_USAGE);
+    return { verdict: verdict, category: category };
 }
 export function parseJoinTarget(rawInput) {
     const parts = rawInput.trim().split(/\s+/u).filter(Boolean);

@@ -54,22 +54,24 @@ var LabController = class {
 			active
 		});
 	}
-	async record(messageId, verdict) {
+	async record(messageId, verdict, category) {
 		this.publish({
 			...this.view,
 			pending: {
 				messageId,
 				verdict,
+				category,
 				phase: "saving"
 			}
 		});
-		const settled = await this.execute(`/omdsh-result ${verdict}`);
+		const settled = await this.execute(`/omdsh-result ${verdict} ${category}`);
 		if (settled.ok) this.publish({
 			...this.view,
 			active: false,
 			pending: {
 				messageId,
 				verdict,
+				category,
 				phase: "local",
 				text: settled.text
 			}
@@ -79,6 +81,7 @@ var LabController = class {
 			pending: {
 				messageId,
 				verdict,
+				category,
 				phase: "error",
 				text: settled.text
 			}
@@ -178,6 +181,40 @@ function shareLabel(verdict) {
 	if (verdict === "mixed") return "查找相似反馈";
 	return "加入并等待修复";
 }
+const CATEGORY_CHOICES = [
+	{
+		value: "installation",
+		label: "安装"
+	},
+	{
+		value: "startup",
+		label: "启动"
+	},
+	{
+		value: "invocation",
+		label: "调用"
+	},
+	{
+		value: "compatibility",
+		label: "兼容性"
+	},
+	{
+		value: "reliability",
+		label: "稳定性"
+	},
+	{
+		value: "performance",
+		label: "性能"
+	},
+	{
+		value: "result_quality",
+		label: "结果质量"
+	},
+	{
+		value: "general",
+		label: "整体体验"
+	}
+];
 /** Latest durable assistant identity from the rc.6 conversation projection. */
 function latestAssistantMessageId(nodes) {
 	for (let index = nodes.length - 1; index >= 0; index -= 1) {
@@ -192,6 +229,7 @@ function ExperienceResultCard({ messageId, useSession, usePluginLab, record, joi
 	const view = usePluginLab((value) => value);
 	const latestMessageId = useSession((snapshot) => latestAssistantMessageId(snapshot.nodes));
 	const [open, setOpen] = (0, react.useState)(false);
+	const [selectedVerdict, setSelectedVerdict] = (0, react.useState)();
 	if (!visible(view, messageId, latestMessageId)) return null;
 	const pending = view.pending?.messageId === messageId ? view.pending : void 0;
 	pending?.phase === "saving" || pending?.phase;
@@ -217,7 +255,7 @@ function ExperienceResultCard({ messageId, useSession, usePluginLab, record, joi
 						display: "block",
 						marginBottom: 9
 					},
-					children: "你觉得这个插件好用吗？"
+					children: selectedVerdict === void 0 ? "你觉得这个插件好用吗？" : "选择一个不涉及任务内容的大类"
 				}),
 				/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
 					style: {
@@ -225,9 +263,9 @@ function ExperienceResultCard({ messageId, useSession, usePluginLab, record, joi
 						marginBottom: 9,
 						color: "var(--dsw-alias-label-secondary)"
 					},
-					children: "Agent 只知道运行状态，不会读取会话或日志替你判断。"
+					children: "Agent 可以建议有限大类，但不会把当前任务、会话或日志写进摘要。"
 				}),
-				pending === void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+				pending === void 0 && selectedVerdict === void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
 					style: {
 						display: "grid",
 						gridTemplateColumns: "repeat(3, 1fr)",
@@ -238,7 +276,7 @@ function ExperienceResultCard({ messageId, useSession, usePluginLab, record, joi
 							type: "button",
 							style: choiceStyle,
 							onClick: () => {
-								record(messageId, "good");
+								setSelectedVerdict("good");
 							},
 							children: "好用"
 						}),
@@ -246,7 +284,7 @@ function ExperienceResultCard({ messageId, useSession, usePluginLab, record, joi
 							type: "button",
 							style: choiceStyle,
 							onClick: () => {
-								record(messageId, "mixed");
+								setSelectedVerdict("mixed");
 							},
 							children: "一般"
 						}),
@@ -254,11 +292,33 @@ function ExperienceResultCard({ messageId, useSession, usePluginLab, record, joi
 							type: "button",
 							style: choiceStyle,
 							onClick: () => {
-								record(messageId, "bad");
+								setSelectedVerdict("bad");
 							},
 							children: "不好用"
 						})
 					]
+				}),
+				pending === void 0 && selectedVerdict !== void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+					style: {
+						display: "grid",
+						gridTemplateColumns: "repeat(2, 1fr)",
+						gap: 7
+					},
+					children: [CATEGORY_CHOICES.map((choice) => /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+						type: "button",
+						style: choiceStyle,
+						onClick: () => {
+							record(messageId, selectedVerdict, choice.value);
+						},
+						children: choice.label
+					}, choice.value)), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+						type: "button",
+						style: choiceStyle,
+						onClick: () => {
+							setSelectedVerdict(void 0);
+						},
+						children: "返回"
+					})]
 				}),
 				pending !== void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
 					style: {
@@ -273,7 +333,7 @@ function ExperienceResultCard({ messageId, useSession, usePluginLab, record, joi
 							},
 							children: pending.phase === "saving" ? "正在只存到本机…" : pending.text
 						}),
-						pending.phase === "local" && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+						pending.phase === "local" && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("button", {
 							type: "button",
 							style: {
 								...choiceStyle,
@@ -282,13 +342,14 @@ function ExperienceResultCard({ messageId, useSession, usePluginLab, record, joi
 							onClick: () => {
 								join();
 							},
-							children: shareLabel(pending.verdict)
+							children: ["确认并提交：", shareLabel(pending.verdict)]
 						}),
 						(pending.phase === "joined" || pending.phase === "error") && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
 							type: "button",
 							style: choiceStyle,
 							onClick: () => {
 								dismiss();
+								setSelectedVerdict(void 0);
 								setOpen(false);
 							},
 							children: "完成"
@@ -301,7 +362,7 @@ function ExperienceResultCard({ messageId, useSession, usePluginLab, record, joi
 						marginTop: 10,
 						color: "var(--dsw-alias-label-tertiary)"
 					},
-					children: "第一步只保存在本机；加入跟进只发送插件、版本、状态枚举和你的选择。网络传输并非绝对匿名。"
+					children: "提交前会显示完整脱敏预览；只发送插件、版本、状态、体验和大类枚举。网络传输并非绝对匿名。"
 				})
 			]
 		})]
@@ -449,7 +510,7 @@ function apply(ctx) {
 			const controller = controllerFor(sessionId);
 			return {
 				hooks: { pluginLab: controller },
-				record: (messageId, outcome) => controller.record(messageId, outcome),
+				record: (messageId, outcome, category) => controller.record(messageId, outcome, category),
 				join: () => controller.join(),
 				dismiss: () => controller.dismiss()
 			};

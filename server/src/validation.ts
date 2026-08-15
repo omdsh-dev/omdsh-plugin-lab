@@ -1,10 +1,16 @@
-import type { AcceptedEvent, ExperienceVerdict, HealthStatus } from './types.js'
+import type {
+  AcceptedEvent, ExperienceVerdict, FeedbackCategory, HealthStatus,
+} from './types.js'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu
 const MODULE = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/u
 const VERSION = /^[0-9A-Za-z][0-9A-Za-z.+_-]{0,63}$/u
 const HEALTH = new Set<HealthStatus>(['ok', 'unavailable', 'error', 'unknown'])
 const EXPERIENCE = new Set<ExperienceVerdict>(['good', 'mixed', 'bad'])
+const CATEGORY = new Set<FeedbackCategory>([
+  'installation', 'startup', 'invocation', 'compatibility',
+  'reliability', 'performance', 'result_quality', 'general',
+])
 
 function row(value: unknown, name: string): Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
@@ -23,13 +29,14 @@ function string(value: unknown, name: string): string {
   return value
 }
 
-/** Reject, rather than strip, every field outside the strict v2 alphabet. */
+/** Reject, rather than strip, every field outside the strict v3 alphabet. */
 export function acceptEvent(value: unknown): AcceptedEvent {
   const root = row(value, 'event')
   exactKeys(root, [
-    'schemaVersion', 'type', 'eventId', 'plugin', 'health', 'experience', 'source', 'retestOfReceiptId',
+    'schemaVersion', 'type', 'eventId', 'plugin', 'health', 'experience', 'category',
+    'source', 'retestOfReceiptId',
   ], 'event')
-  if (root.schemaVersion !== 2 || root.type !== 'feedback.signal') {
+  if (root.schemaVersion !== 3 || root.type !== 'feedback.signal') {
     throw new TypeError('unsupported event schema')
   }
   const eventId = string(root.eventId, 'eventId')
@@ -44,6 +51,7 @@ export function acceptEvent(value: unknown): AcceptedEvent {
 
   if (!HEALTH.has(root.health as HealthStatus)) throw new TypeError('health is invalid')
   if (!EXPERIENCE.has(root.experience as ExperienceVerdict)) throw new TypeError('experience is invalid')
+  if (!CATEGORY.has(root.category as FeedbackCategory)) throw new TypeError('category is invalid')
   if (root.source !== 'user_confirmed') throw new TypeError('source is invalid')
   const retestOfReceiptId = root.retestOfReceiptId === undefined
     ? undefined
@@ -58,6 +66,7 @@ export function acceptEvent(value: unknown): AcceptedEvent {
     ...version === undefined ? {} : { pluginVersion: version },
     health: root.health as HealthStatus,
     experience: root.experience as ExperienceVerdict,
+    category: root.category as FeedbackCategory,
     source: 'user_confirmed',
     ...retestOfReceiptId === undefined ? {} : { retestOfReceiptId },
   }

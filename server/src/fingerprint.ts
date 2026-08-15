@@ -2,8 +2,8 @@ import { createHash, createHmac } from 'node:crypto'
 import type { AcceptedEvent } from './types.js'
 
 export function symptomFor(event: AcceptedEvent): string {
-  if (event.health !== 'ok') return `health-${event.health}`
-  return `experience-${event.experience}`
+  if (event.health !== 'ok') return `${event.category}-health-${event.health}`
+  return `${event.category}-experience-${event.experience}`
 }
 
 export function clusterKey(event: AcceptedEvent): string {
@@ -12,6 +12,7 @@ export function clusterKey(event: AcceptedEvent): string {
     event.pluginVersion ?? '*',
     event.health,
     event.experience,
+    event.category,
   ].join('\u001f')).digest('hex')
 }
 

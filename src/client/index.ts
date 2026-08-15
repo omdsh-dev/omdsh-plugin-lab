@@ -40,7 +40,7 @@ export function apply(ctx: ClientContext): void {
       const controller = controllerFor(sessionId)
       return {
         hooks: { pluginLab: controller },
-        record: (messageId, outcome) => controller.record(messageId, outcome),
+        record: (messageId, outcome, category) => controller.record(messageId, outcome, category),
         join: () => controller.join(),
         dismiss: () => controller.dismiss(),
       }

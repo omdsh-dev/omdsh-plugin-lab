@@ -43,10 +43,10 @@ export class FeedbackStore {
         if (!isAbsolute(dataDir))
             throw new TypeError('plugin-lab: dataDir must be an absolute path');
         this.dataDir = dataDir;
-        this.eventsPath = join(dataDir, 'feedback-v2.ndjson');
-        this.receiptsPath = join(dataDir, 'receipts-v2.ndjson');
-        this.shareRequestsPath = join(dataDir, 'share-requests-v2.ndjson');
-        this.receiptSeenPath = join(dataDir, 'receipt-seen-v2.ndjson');
+        this.eventsPath = join(dataDir, 'feedback-v3.ndjson');
+        this.receiptsPath = join(dataDir, 'receipts-v3.ndjson');
+        this.shareRequestsPath = join(dataDir, 'share-requests-v3.ndjson');
+        this.receiptSeenPath = join(dataDir, 'receipt-seen-v3.ndjson');
         mkdirSync(dataDir, { recursive: true, mode: 0o700 });
         chmodSync(dataDir, 0o700);
     }
