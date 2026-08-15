@@ -1,13 +1,12 @@
 import { timingSafeEqual } from 'node:crypto'
 import { acceptEvent } from './validation.js'
-import { clusterKey, followToken, hashParticipant, symptomFor } from './fingerprint.js'
+import { clusterKey, followToken, symptomFor } from './fingerprint.js'
 import type { IssuePublisher } from './github.js'
 import type {
   ClusterRecord, ExperienceRepository, PluginEvidence, ReleaseUpdate, StoredReceipt,
 } from './types.js'
 
 export interface ServiceConfig {
-  readonly privacyHashSecret: string
   readonly followSecret: string
   readonly publicBaseUrl: string
   readonly githubThreshold: number
@@ -19,7 +18,6 @@ export interface ReceiptResponse {
   readonly eventId: string
   readonly status: ClusterRecord['status']
   readonly similarReports: number
-  readonly message: string
   readonly recommendedVersion?: string
   readonly trackingUrl?: string
   readonly followToken?: string
@@ -38,16 +36,15 @@ export class FeedbackService {
     const event = acceptEvent(value)
     const accepted = await this.repository.ingest(
       event,
-      hashParticipant(this.config.privacyHashSecret, event.participantId),
       clusterKey(event),
       symptomFor(event),
     )
     let receipt = accepted.receipt
     if (event.retestOfReceiptId !== undefined) {
-      await this.repository.verifyRetest(event.retestOfReceiptId, event.outcome === 'worked')
+      await this.repository.verifyRetest(event.retestOfReceiptId, event.experience === 'good')
     }
     const cluster = receipt.cluster
-    const actionable = cluster.symptom !== 'outcome-worked'
+    const actionable = cluster.symptom !== 'experience-good'
       && cluster.similarReports >= this.config.githubThreshold
       && cluster.githubIssueUrl === undefined
     if (actionable && this.publisher !== undefined) {
@@ -74,9 +71,6 @@ export class FeedbackService {
     if (update.recommendedVersion.trim().length === 0 || update.recommendedVersion.length > 64) {
       throw new TypeError('recommendedVersion is required')
     }
-    if (update.message.trim().length === 0 || update.message.length > 500) {
-      throw new TypeError('message is required and must be at most 500 characters')
-    }
     return await this.repository.release(clusterId, update)
   }
 
@@ -93,7 +87,6 @@ export class FeedbackService {
       eventId: receipt.eventId,
       status: cluster.status,
       similarReports: cluster.similarReports,
-      message: cluster.message ?? statusMessage(cluster),
       ...cluster.recommendedVersion === undefined ? {} : { recommendedVersion: cluster.recommendedVersion },
       ...cluster.githubIssueUrl === undefined ? {} : { trackingUrl: cluster.githubIssueUrl },
       ...includeToken ? { followToken: followToken(this.config.followSecret, receipt.eventId) } : {},
@@ -101,15 +94,6 @@ export class FeedbackService {
       updatedAt: cluster.updatedAt,
     }
   }
-}
-
-function statusMessage(cluster: ClusterRecord): string {
-  if (cluster.status === 'received') return '已收到这次实测；有相似报告时会更新。'
-  if (cluster.status === 'clustered') return '已发现多个独立安装上的相似体验。'
-  if (cluster.status === 'reported') return '聚合问题已发送给维护者。'
-  if (cluster.status === 'retest-requested') return '修复版本已发布，邀请你用原任务复测。'
-  if (cluster.status === 'verified') return '已有用户确认修复有效。'
-  return `当前处理状态：${cluster.status}。`
 }
 
 function safeEqual(left: string, right: string): boolean {

@@ -1,42 +1,31 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { clusterKey } from '../src/fingerprint.js'
 import { MemoryRepository } from '../src/memory.js'
 import { FeedbackService } from '../src/service.js'
+import { acceptEvent } from '../src/validation.js'
 
-function event(participantId = crypto.randomUUID(), eventId = crypto.randomUUID(), outcome = 'failed') {
+function event(experience: 'good' | 'mixed' | 'bad' = 'bad', eventId = crypto.randomUUID()) {
   return {
-    schemaVersion: 1,
-    type: 'feedback.submitted',
+    schemaVersion: 2,
+    type: 'feedback.signal',
     eventId,
-    occurredAt: Date.now(),
-    participantId,
-    trial: {
-      id: crypto.randomUUID(), plugin: { moduleName: '@example/search', version: '1.0.0' },
-      taskId: 'repo-search', startedAt: Date.now() - 1_000, durationMs: 1_000,
-    },
-    environment: {
-      dshVersion: '0.1.0-rc.6', nodeVersion: 'v24', platform: 'darwin', arch: 'arm64', locale: 'zh', profileLabel: 'test',
-    },
-    signals: {
-      loaderHealth: 'active', assistantMessages: 1, turnsStarted: 1, turnsCompleted: 1,
-      toolCalls: 1, toolErrors: 1, agentErrors: 0, processCrashes: 0, crashes: [],
-    },
-    feedback: { outcome, retention: outcome === 'worked' ? 'keep' : 'remove' },
-    sharing: { transcript: 'none', noteIncluded: false },
-  }
+    plugin: { moduleName: '@example/search', version: '1.0.0' },
+    health: 'ok',
+    experience,
+    source: 'user_confirmed',
+  } as const
 }
 
-function service(repository = new MemoryRepository()) {
+function service(repository = new MemoryRepository(), publisher?: { publish: (cluster: never) => Promise<string> }) {
   return new FeedbackService(repository, {
-    privacyHashSecret: 'privacy-secret-long-enough',
     followSecret: 'follow-secret-long-enough',
     publicBaseUrl: 'https://feedback.example.test',
     githubThreshold: 3,
-  })
+  }, publisher)
 }
 
-describe('feedback flywheel service', () => {
-  it('is idempotent and returns a followable receipt without storing transcript content', async () => {
+describe('zero-content feedback flywheel service', () => {
+  it('is idempotent and returns a report-scoped follow receipt', async () => {
     const api = service()
     const input = event()
     const first = await api.ingest(input)
@@ -47,62 +36,52 @@ describe('feedback flywheel service', () => {
     await expect(api.follow(first.receiptId, 'wrong')).resolves.toBeUndefined()
   })
 
-  it('counts independent installations, releases a fix, and closes the loop through a retest', async () => {
+  it('counts reports without a stable user id and closes the loop through explicit retest', async () => {
     const repository = new MemoryRepository()
     const api = service(repository)
-    const first = await api.ingest(event())
-    const second = await api.ingest(event())
+    const first = await api.ingest(event('bad'))
+    const second = await api.ingest(event('bad'))
     expect(second.similarReports).toBe(2)
     expect(second.status).toBe('clustered')
     const original = await repository.receipt(first.receiptId)
     if (original === undefined) throw new Error('missing receipt')
-    await api.release(original.cluster.id, { recommendedVersion: '1.0.1', message: '修复已发布，请复测。' })
-    const invitation = await api.follow(first.receiptId, first.followToken ?? '')
-    expect(invitation).toMatchObject({ status: 'retest-requested', recommendedVersion: '1.0.1' })
-    const retest = event(crypto.randomUUID(), crypto.randomUUID(), 'worked')
-    retest.trial.retestOfReceiptId = first.receiptId
-    retest.signals.toolErrors = 0
-    await api.ingest(retest)
+    await api.release(original.cluster.id, { recommendedVersion: '1.0.1' })
+    await expect(api.follow(first.receiptId, first.followToken ?? '')).resolves.toMatchObject({
+      status: 'retest-requested', recommendedVersion: '1.0.1',
+    })
+    await api.ingest({ ...event('good'), retestOfReceiptId: first.receiptId })
     await expect(api.follow(first.receiptId, first.followToken ?? '')).resolves.toMatchObject({ status: 'verified' })
   })
 
-  it('uses task, version, DSH version and symptom in the cluster fingerprint', () => {
-    const accepted = {
-      eventId: crypto.randomUUID(), participantId: crypto.randomUUID(), occurredAt: 1, trialId: 'trial',
-      pluginModule: 'plugin', pluginVersion: '1', taskId: 'search', dshVersion: 'dsh',
-      outcome: 'failed' as const, retention: 'remove' as const, loaderHealth: 'active',
-      assistantMessages: 1, toolErrors: 1, agentErrors: 0, processCrashes: 0, crashes: [], durationMs: 1,
-    }
-    expect(clusterKey({ ...accepted, taskId: 'other' })).not.toBe(clusterKey(accepted))
+  it('clusters only public plugin coordinates and finite signals', () => {
+    const accepted = acceptEvent(event('bad'))
+    expect(clusterKey({ ...accepted, experience: 'good' })).not.toBe(clusterKey(accepted))
+    expect(clusterKey({ ...accepted, health: 'error' })).not.toBe(clusterKey(accepted))
   })
 
-  it('clusters a shared crash by its sanitized signature and rejects absolute paths', async () => {
-    const repository = new MemoryRepository()
-    const api = service(repository)
-    const crashed = event()
-    Object.assign(crashed.signals, {
-      processCrashes: 1,
-      crashes: [{
-        fingerprint: '0123456789abcdef0123', name: 'TypeError', code: 'ERR_STATE',
-        origin: 'uncaughtException', frame: 'node_modules/@example/search/dist/index.js:10:2',
-      }],
-    })
-    const receipt = await api.ingest(crashed)
-    await expect(repository.receipt(receipt.receiptId)).resolves.toMatchObject({
-      cluster: { symptom: 'runtime-crash:TypeError:ERR_STATE:node_modules/@example/search/dist/index.js:10:2:0123456789abcdef0123' },
-    })
+  it('rejects old telemetry, log-derived fields, free text and unknown fields fail closed', () => {
+    const attempts = [
+      { ...event(), note: 'CANARY_SECRET' },
+      { ...event(), log: 'CANARY_SECRET' },
+      { ...event(), stack: '/Users/alice/private.ts' },
+      { ...event(), participantId: crypto.randomUUID() },
+      { ...event(), occurredAt: Date.now() },
+      { ...event(), signals: { toolErrors: 1 } },
+      { ...event(), environment: { platform: 'darwin' } },
+    ]
+    for (const attempt of attempts) expect(() => acceptEvent(attempt)).toThrow('unsupported fields')
+    expect(() => acceptEvent({ ...event(), schemaVersion: 1 })).toThrow('unsupported event schema')
+    expect(() => acceptEvent({ ...event(), source: 'agent_inferred' })).toThrow('source is invalid')
+  })
 
-    const unsafe = event()
-    Object.assign(unsafe.signals, {
-      processCrashes: 1,
-      crashes: [{
-        fingerprint: '0123456789abcdef0123', name: 'Error', origin: 'uncaughtException',
-        frame: '/Users/private/project/index.js:1:2',
-      }],
-    })
-    await expect(api.ingest(unsafe)).rejects.toThrow('must not contain an unsafe path')
-
-    unsafe.signals.crashes[0].frame = 'node_modules/../../Users/private/index.js:1:2'
-    await expect(api.ingest(unsafe)).rejects.toThrow('must not contain an unsafe path')
+  it('publishes only an aggregate after the configured threshold', async () => {
+    const publish = vi.fn(async () => 'https://github.example/issues/1')
+    const api = service(new MemoryRepository(), { publish: publish as never })
+    await api.ingest(event('bad'))
+    await api.ingest(event('bad'))
+    expect(publish).not.toHaveBeenCalled()
+    const third = await api.ingest(event('bad'))
+    expect(publish).toHaveBeenCalledOnce()
+    expect(third).toMatchObject({ status: 'reported', similarReports: 3 })
   })
 })

@@ -19,12 +19,11 @@ export class GitHubIssuePublisher implements IssuePublisher {
       '',
       `- 插件：\`${cluster.pluginModule}\``,
       `- 版本：\`${cluster.pluginVersion ?? 'unknown'}\``,
-      `- 任务：\`${cluster.taskId ?? 'unclassified'}\``,
-      `- 症状：\`${cluster.symptom}\``,
-      `- 独立安装报告：${cluster.similarReports}`,
-      `- 聚类 ID：\`${cluster.id}\``,
+      `- 运行状态：\`${cluster.health}\``,
+      `- 用户确认体验：\`${cluster.experience}\``,
+      `- 聚合报告数：${cluster.similarReports}`,
       '',
-      '此 Issue 只包含聚合后的结构化信号，不包含 Prompt、回复正文、Tool 参数或用户路径。',
+      '此 Issue 只包含达到阈值后的有限枚举聚合，不包含单条报告、日志、会话、环境、时间或身份字段。',
     ].join('\n')
     const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/issues`, {
       method: 'POST',

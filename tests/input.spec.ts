@@ -1,44 +1,35 @@
 import { describe, expect, it } from 'vitest'
-import { parseFeedbackInput, parseStartInput } from '../src/input.js'
+import { parseJoinTarget, parseReceiptId, parseStartInput, parseVerdict } from '../src/input.js'
 
-describe('trial command input', () => {
-  it('parses a scoped module, version and task id', () => {
-    expect(parseStartInput(' @example/dsh-plugin#0.3.1 repo-search-v1 ')).toEqual({
-      plugin: { moduleName: '@example/dsh-plugin', version: '0.3.1' },
-      taskId: 'repo-search-v1',
+describe('closed command inputs', () => {
+  it('accepts only a public module and optional bounded version', () => {
+    expect(parseStartInput(' @example/dsh-plugin#0.3.0 ')).toEqual({
+      plugin: { moduleName: '@example/dsh-plugin', version: '0.3.0' },
     })
+    expect(parseStartInput('plugin')).toEqual({ plugin: { moduleName: 'plugin' } })
   })
 
-  it('rejects an absent target', () => {
+  it('rejects task labels, paths, urls and whitespace-bearing metadata', () => {
+    expect(() => parseStartInput('plugin private-task')).toThrow('/omdsh-start')
+    expect(() => parseStartInput('/Users/alice/plugin')).toThrow('/omdsh-start')
+    expect(() => parseStartInput('https://example.test/plugin')).toThrow('/omdsh-start')
     expect(() => parseStartInput(' ')).toThrow('/omdsh-start')
   })
-})
 
-describe('feedback command input', () => {
-  it('keeps notes local unless explicitly shared', () => {
-    expect(parseFeedbackInput('worked keep --share 很省时间')).toEqual({
-      outcome: 'worked',
-      retention: 'keep',
-      note: '很省时间',
-      share: true,
-      shareNote: false,
-      dryRun: false,
-    })
+  it('accepts only finite user-confirmed verdicts with no notes or flags', () => {
+    expect(parseVerdict('good')).toBe('good')
+    expect(parseVerdict('mixed')).toBe('mixed')
+    expect(parseVerdict('bad')).toBe('bad')
+    expect(() => parseVerdict('bad secret-note')).toThrow('/omdsh-result')
+    expect(() => parseVerdict('worked')).toThrow('/omdsh-result')
   })
 
-  it('makes --share-note imply sharing', () => {
-    expect(parseFeedbackInput('partial unsure --share-note 排序不清楚')).toMatchObject({
-      share: true,
-      shareNote: true,
-      note: '排序不清楚',
-    })
-  })
-
-  it('requires a note when --share-note is chosen', () => {
-    expect(() => parseFeedbackInput('failed remove --share-note')).toThrow('non-empty note')
-  })
-
-  it('rejects unknown structured choices', () => {
-    expect(() => parseFeedbackInput('great maybe')).toThrow('/omdsh-feedback')
+  it('accepts one join target and rejects extra arguments', () => {
+    expect(parseJoinTarget('latest')).toBe('latest')
+    expect(parseJoinTarget('00000000-0000-4000-8000-000000000001')).toContain('4000')
+    expect(() => parseJoinTarget('latest --share-note')).toThrow('/omdsh-join')
+    expect(() => parseJoinTarget('private-receipt-label')).toThrow('/omdsh-join')
+    expect(parseReceiptId('00000000-0000-4000-8000-000000000001')).toContain('4000')
+    expect(() => parseReceiptId('private-receipt-label')).toThrow('/omdsh-retest')
   })
 })

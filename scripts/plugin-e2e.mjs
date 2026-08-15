@@ -44,6 +44,10 @@ if (installedManifest.dsh?.client?.platform !== 'web') {
   throw new Error('installed package does not declare a Web dsh.client')
 }
 assertClientRegistration(readFileSync(join(installedRoot, 'dist', 'client.js'), 'utf8'))
+assertStrictHostArtifact(
+  readFileSync(join(installedRoot, 'dist', 'index.js'), 'utf8'),
+  readFileSync(join(installedRoot, 'dist', 'agent-tool.js'), 'utf8'),
+)
 const dumped = run(dsh, ['--profile', profile, '--dump-config'], project, env)
 if (!dumped.includes('omdsh-plugin-lab') || !dumped.includes('@oh-my-dsh/plugin-lab')) {
   throw new Error(`dumped config does not contain Plugin Lab\n${dumped}`)
@@ -78,6 +82,18 @@ function assertClientRegistration(source) {
   })
   if (!Array.isArray(client.inject) || typeof client.apply !== 'function') {
     throw new Error('registered client artifact does not expose inject and apply')
+  }
+}
+
+function assertStrictHostArtifact(indexSource, toolSource) {
+  const source = `${indexSource}\n${toolSource}`
+  if (!toolSource.includes('omdsh_analyze_plugin_experience')) {
+    throw new Error('installed Host artifact omitted the Agent safe assessment tool')
+  }
+  for (const forbidden of ['uncaughtExceptionMonitor', 'participantId', 'crashes.ndjson', 'shareNote']) {
+    if (source.includes(forbidden)) {
+      throw new Error(`installed Host artifact retained forbidden v1 path: ${forbidden}`)
+    }
   }
 }
 

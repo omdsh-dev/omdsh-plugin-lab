@@ -54,22 +54,22 @@ var LabController = class {
 			active
 		});
 	}
-	async record(messageId, outcome) {
+	async record(messageId, verdict) {
 		this.publish({
 			...this.view,
 			pending: {
 				messageId,
-				outcome,
+				verdict,
 				phase: "saving"
 			}
 		});
-		const settled = await this.execute(`/omdsh-result ${outcome}`);
+		const settled = await this.execute(`/omdsh-result ${verdict}`);
 		if (settled.ok) this.publish({
 			...this.view,
 			active: false,
 			pending: {
 				messageId,
-				outcome,
+				verdict,
 				phase: "local",
 				text: settled.text
 			}
@@ -78,7 +78,7 @@ var LabController = class {
 			...this.view,
 			pending: {
 				messageId,
-				outcome,
+				verdict,
 				phase: "error",
 				text: settled.text
 			}
@@ -106,6 +106,9 @@ var LabController = class {
 	}
 	async inbox() {
 		return (await this.execute("/omdsh-inbox")).text;
+	}
+	async probe() {
+		return (await this.execute("/omdsh-probe")).text;
 	}
 	dismiss() {
 		const { pending: _pending,...view } = this.view;
@@ -170,9 +173,9 @@ const choiceStyle = {
 	color: "inherit",
 	cursor: "pointer"
 };
-function shareLabel(outcome) {
-	if (outcome === "worked") return "贡献匿名实测";
-	if (outcome === "partial") return "查找相似问题";
+function shareLabel(verdict) {
+	if (verdict === "good") return "贡献聚合实测";
+	if (verdict === "mixed") return "查找相似反馈";
 	return "加入并等待修复";
 }
 /** Latest durable assistant identity from the rc.6 conversation projection. */
@@ -214,7 +217,15 @@ function ExperienceResultCard({ messageId, useSession, usePluginLab, record, joi
 						display: "block",
 						marginBottom: 9
 					},
-					children: "这次插件把事情做成了吗？"
+					children: "你觉得这个插件好用吗？"
+				}),
+				/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+					style: {
+						display: "block",
+						marginBottom: 9,
+						color: "var(--dsw-alias-label-secondary)"
+					},
+					children: "Agent 只知道运行状态，不会读取会话或日志替你判断。"
 				}),
 				pending === void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
 					style: {
@@ -227,25 +238,25 @@ function ExperienceResultCard({ messageId, useSession, usePluginLab, record, joi
 							type: "button",
 							style: choiceStyle,
 							onClick: () => {
-								record(messageId, "worked");
+								record(messageId, "good");
 							},
-							children: "做成了"
+							children: "好用"
 						}),
 						/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
 							type: "button",
 							style: choiceStyle,
 							onClick: () => {
-								record(messageId, "partial");
+								record(messageId, "mixed");
 							},
-							children: "做了一部分"
+							children: "一般"
 						}),
 						/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
 							type: "button",
 							style: choiceStyle,
 							onClick: () => {
-								record(messageId, "failed");
+								record(messageId, "bad");
 							},
-							children: "没做成"
+							children: "不好用"
 						})
 					]
 				}),
@@ -271,7 +282,7 @@ function ExperienceResultCard({ messageId, useSession, usePluginLab, record, joi
 							onClick: () => {
 								join();
 							},
-							children: shareLabel(pending.outcome)
+							children: shareLabel(pending.verdict)
 						}),
 						(pending.phase === "joined" || pending.phase === "error") && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
 							type: "button",
@@ -290,7 +301,7 @@ function ExperienceResultCard({ messageId, useSession, usePluginLab, record, joi
 						marginTop: 10,
 						color: "var(--dsw-alias-label-tertiary)"
 					},
-					children: "第一步只保存在本机；加入跟进仅发送插件、版本、结果与无内容运行指标，不发送对话正文。"
+					children: "第一步只保存在本机；加入跟进只发送插件、版本、状态枚举和你的选择。网络传输并非绝对匿名。"
 				})
 			]
 		})]
@@ -299,7 +310,7 @@ function ExperienceResultCard({ messageId, useSession, usePluginLab, record, joi
 
 //#endregion
 //#region src/client/InboxButton.tsx
-const button = {
+const button$1 = {
 	height: 28,
 	padding: "0 9px",
 	border: "none",
@@ -319,7 +330,7 @@ function InboxButton({ checkInbox }) {
 		},
 		children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
 			type: "button",
-			style: button,
+			style: button$1,
 			disabled: busy,
 			onClick: () => {
 				if (text !== null) return setText(null);
@@ -329,6 +340,60 @@ function InboxButton({ checkInbox }) {
 				});
 			},
 			children: busy ? "检查中…" : "反馈进展"
+		}), text !== null && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+			role: "status",
+			style: {
+				position: "absolute",
+				zIndex: 30,
+				left: 0,
+				bottom: 34,
+				width: 330,
+				padding: 12,
+				border: "1px solid var(--dsw-alias-border-secondary)",
+				borderRadius: 10,
+				background: "var(--dsw-alias-bg-primary)",
+				color: "var(--dsw-alias-label-secondary)",
+				boxShadow: "0 12px 36px rgba(0,0,0,.18)",
+				whiteSpace: "pre-wrap",
+				fontSize: 13
+			},
+			children: text
+		})]
+	});
+}
+
+//#endregion
+//#region src/client/ProbeButton.tsx
+const button = {
+	height: 28,
+	padding: "0 9px",
+	border: "none",
+	borderRadius: 14,
+	cursor: "pointer",
+	background: "transparent",
+	color: "var(--dsw-alias-label-tertiary)",
+	fontSize: 12
+};
+function ProbeButton({ checkHealth }) {
+	const [text, setText] = (0, react.useState)(null);
+	const [busy, setBusy] = (0, react.useState)(false);
+	return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+		style: {
+			position: "relative",
+			display: "inline-flex"
+		},
+		children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+			type: "button",
+			style: button,
+			disabled: busy,
+			onClick: () => {
+				if (text !== null) return setText(null);
+				setBusy(true);
+				checkHealth().then(setText).finally(() => {
+					setBusy(false);
+				});
+			},
+			children: busy ? "探活中…" : "插件探活"
 		}), text !== null && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
 			role: "status",
 			style: {
@@ -396,12 +461,19 @@ function apply(ctx) {
 		order: 40,
 		inject: (sessionId) => ({ checkInbox: () => controllerFor(sessionId).inbox() })
 	}, InboxButton));
+	ctx.slots.inject("conversation.input.left", () => ctx.slots.register({
+		name: "conversation.input.left",
+		id: "omdsh-plugin-lab-probe",
+		order: 39,
+		inject: (sessionId) => ({ checkHealth: () => controllerFor(sessionId).probe() })
+	}, ProbeButton));
 }
 
 //#endregion
 exports.ExperienceResultCard = ExperienceResultCard;
 exports.InboxButton = InboxButton;
 exports.LabController = LabController;
+exports.ProbeButton = ProbeButton;
 exports.apply = apply;
 exports.inject = inject;
 return module.exports; } });

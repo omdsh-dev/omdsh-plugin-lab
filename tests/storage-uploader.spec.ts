@@ -3,8 +3,8 @@ import { mkdtempSync, readFileSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import type { ExperienceEventV1, LocalExperienceRecord } from '../src/protocol.js'
-import { ExperienceStore } from '../src/storage.js'
+import type { FeedbackEventV2, LocalFeedbackRecord } from '../src/protocol.js'
+import { FeedbackStore } from '../src/storage.js'
 import { ExperienceUploader } from '../src/uploader.js'
 
 const servers: Array<ReturnType<typeof createServer>> = []
@@ -13,48 +13,43 @@ afterEach(async () => {
   await Promise.all(servers.splice(0).map(server => new Promise<void>(resolve => server.close(() => resolve()))))
 })
 
-function record(shareNote = false): LocalExperienceRecord {
-  const event: ExperienceEventV1 = {
-    schemaVersion: 1,
-    type: 'feedback.submitted',
+function record(): LocalFeedbackRecord {
+  const event: FeedbackEventV2 = {
+    schemaVersion: 2,
+    type: 'feedback.signal',
     eventId: crypto.randomUUID(),
-    occurredAt: Date.now(),
-    participantId: crypto.randomUUID(),
-    trial: { id: 'trial', plugin: { moduleName: 'plugin' }, startedAt: 1, durationMs: 1 },
-    environment: {
-      dshVersion: 'v', nodeVersion: 'n', platform: 'darwin', arch: 'arm64', locale: 'zh', profileLabel: 'test',
-    },
-    signals: {
-      loaderHealth: 'active', assistantMessages: 1, turnsStarted: 1, turnsCompleted: 1,
-      toolCalls: 0, toolErrors: 0, agentErrors: 0, processCrashes: 0,
-    },
-    feedback: { outcome: 'worked', retention: 'keep', note: 'private' },
-    sharing: { transcript: 'none', noteIncluded: shareNote },
+    plugin: { moduleName: 'plugin', version: '1.0.0' },
+    health: 'error',
+    experience: 'bad',
+    source: 'user_confirmed',
   }
-  return { event, requestedShare: true, shareNote }
+  return { event, requestedShare: false }
 }
 
-describe('local outbox and uploader', () => {
-  it('uses private filesystem permissions and stable plugin-local identity', () => {
+describe('strict local outbox and uploader', () => {
+  it('uses private filesystem permissions and creates no stable identity or crash journal', () => {
     const root = mkdtempSync(join(tmpdir(), 'omdsh-plugin-lab-'))
-    const store = new ExperienceStore(join(root, 'data'))
-    const first = store.participantId()
-    expect(store.participantId()).toBe(first)
-    expect(store.resetParticipantId()).not.toBe(first)
-    const crash = {
-      crashId: crypto.randomUUID(), trialId: 'trial', occurredAt: Date.now(),
-      crash: { fingerprint: '1234567890abcdef1234', name: 'TypeError', origin: 'uncaughtException' as const },
-    }
-    store.appendCrash(crash)
-    expect(store.crashRecords('trial')).toEqual([crash])
-    expect(statSync(store.crashesPath).mode & 0o777).toBe(0o600)
+    const store = new FeedbackStore(join(root, 'data'))
+    const value = record()
+    store.append(value)
+    expect(statSync(store.eventsPath).mode & 0o777).toBe(0o600)
+    expect(Object.keys(store).sort()).toEqual([
+      'dataDir', 'eventsPath', 'receiptSeenPath', 'receiptsPath', 'shareRequestsPath',
+    ])
+    const stored = readFileSync(store.eventsPath, 'utf8')
+    expect(stored).not.toContain('participant')
+    expect(stored).not.toContain('crash')
+    expect(store.pending()).toHaveLength(0)
+    store.requestShare(value.event.eventId)
+    expect(store.pending()).toHaveLength(1)
   })
 
-  it('posts a narrow payload, persists the receipt, and clears pending state', async () => {
+  it('posts the exact closed packet and persists a report-scoped receipt', async () => {
     const root = mkdtempSync(join(tmpdir(), 'omdsh-plugin-lab-'))
-    const store = new ExperienceStore(join(root, 'data'))
-    const queued = record(false)
+    const store = new FeedbackStore(join(root, 'data'))
+    const queued = record()
     store.append(queued)
+    store.requestShare(queued.event.eventId)
     let received = ''
     const server = createServer((request, response) => {
       if (request.method === 'GET') {
@@ -62,7 +57,7 @@ describe('local outbox and uploader', () => {
         response.writeHead(200, { 'content-type': 'application/json' })
         response.end(JSON.stringify({
           receiptId: 'receipt-1', status: 'retest-requested', updatedAt: 2,
-          recommendedVersion: '0.3.3', message: '请用原任务复测。',
+          recommendedVersion: '0.3.1',
         }))
         return
       }
@@ -76,7 +71,7 @@ describe('local outbox and uploader', () => {
         response.end(JSON.stringify({
           receiptId: 'receipt-1', status: 'clustered', updatedAt: 1,
           similarReports: 7,
-          recommendedVersion: '0.3.2',
+          recommendedVersion: '0.3.0',
           followToken: 'follow-secret',
           updatesUrl: `http://127.0.0.1:${address.port}/v1/receipts/receipt-1`,
         }))
@@ -85,7 +80,7 @@ describe('local outbox and uploader', () => {
     servers.push(server)
     await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
     const address = server.address()
-    if (address === null || typeof address === 'string') throw new Error('missing test address')
+    if (address === null || typeof address === 'string') throw new Error('missing address')
     const uploader = new ExperienceUploader(store, {
       ingestUrl: `http://127.0.0.1:${address.port}/v1/experience-events`,
       authorizationEnv: 'OMDSH_TEST_TOKEN',
@@ -93,14 +88,13 @@ describe('local outbox and uploader', () => {
     })
     const receipts = await uploader.flushPending(queued.event.eventId)
     expect(receipts.get(queued.event.eventId)).toMatchObject({
-      status: 'clustered', similarReports: 7, recommendedVersion: '0.3.2',
+      status: 'clustered', similarReports: 7, recommendedVersion: '0.3.0',
     })
-    expect(JSON.parse(received).feedback).toEqual({ outcome: 'worked', retention: 'keep' })
+    expect(JSON.parse(received)).toEqual(queued.event)
+    expect(Buffer.byteLength(received)).toBeLessThan(512)
     expect(store.pending()).toHaveLength(0)
-    expect(readFileSync(store.receiptsPath, 'utf8')).toContain(queued.event.eventId)
     await expect(uploader.refreshReceipts()).resolves.toMatchObject([
-      { status: 'retest-requested', recommendedVersion: '0.3.3' },
+      { status: 'retest-requested', recommendedVersion: '0.3.1' },
     ])
-    expect(store.unreadReceipts()).toHaveLength(1)
   })
 })
