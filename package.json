@@ -1,14 +1,15 @@
 {
   "name": "@oh-my-dsh/plugin-lab",
-  "version": "0.3.0",
-  "description": "DSH zero-content plugin health, user-confirmed feedback and aggregate fix flywheel",
+  "version": "0.4.0",
+  "description": "DSH privacy-first plugin health, confirmed category summaries and aggregate fix flywheel",
   "license": "MIT",
   "type": "module",
   "files": [
     "dist",
     "cordis.patch.yml",
     "examples",
-    "README.md"
+    "README.md",
+    "PRIVACY.md"
   ],
   "exports": {
     ".": {

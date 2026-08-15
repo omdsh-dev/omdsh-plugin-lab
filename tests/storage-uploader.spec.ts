@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import type { FeedbackEventV2, LocalFeedbackRecord } from '../src/protocol.js'
+import type { FeedbackEventV3, LocalFeedbackRecord } from '../src/protocol.js'
 import { FeedbackStore } from '../src/storage.js'
 import { ExperienceUploader } from '../src/uploader.js'
 
@@ -14,13 +14,14 @@ afterEach(async () => {
 })
 
 function record(): LocalFeedbackRecord {
-  const event: FeedbackEventV2 = {
-    schemaVersion: 2,
+  const event: FeedbackEventV3 = {
+    schemaVersion: 3,
     type: 'feedback.signal',
     eventId: crypto.randomUUID(),
     plugin: { moduleName: 'plugin', version: '1.0.0' },
     health: 'error',
     experience: 'bad',
+    category: 'reliability',
     source: 'user_confirmed',
   }
   return { event, requestedShare: false }
@@ -71,7 +72,7 @@ describe('strict local outbox and uploader', () => {
         response.end(JSON.stringify({
           receiptId: 'receipt-1', status: 'clustered', updatedAt: 1,
           similarReports: 7,
-          recommendedVersion: '0.3.0',
+          recommendedVersion: '0.4.0',
           followToken: 'follow-secret',
           updatesUrl: `http://127.0.0.1:${address.port}/v1/receipts/receipt-1`,
         }))
@@ -88,7 +89,7 @@ describe('strict local outbox and uploader', () => {
     })
     const receipts = await uploader.flushPending(queued.event.eventId)
     expect(receipts.get(queued.event.eventId)).toMatchObject({
-      status: 'clustered', similarReports: 7, recommendedVersion: '0.3.0',
+      status: 'clustered', similarReports: 7, recommendedVersion: '0.4.0',
     })
     expect(JSON.parse(received)).toEqual(queued.event)
     expect(Buffer.byteLength(received)).toBeLessThan(512)

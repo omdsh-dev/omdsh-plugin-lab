@@ -2,12 +2,16 @@ import { useState, type CSSProperties } from 'react'
 import type { MessageId } from '@deepseek-ai/dsh-client-connection/client'
 import type { ConversationNode } from '@deepseek-ai/dsh-client-runtime/client'
 import type { InjectFace, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import type { ExperienceVerdict } from '../protocol.js'
+import type { ExperienceVerdict, FeedbackCategory } from '../protocol.js'
 import type { LabController, LabView } from './controller.js'
 
 export interface LabInjected {
   hooks: { pluginLab: LabController }
-  record: (messageId: MessageId, verdict: ExperienceVerdict) => Promise<void>
+  record: (
+    messageId: MessageId,
+    verdict: ExperienceVerdict,
+    category: FeedbackCategory,
+  ) => Promise<void>
   join: () => Promise<void>
   dismiss: () => void
 }
@@ -40,6 +44,17 @@ function shareLabel(verdict: ExperienceVerdict): string {
   return '加入并等待修复'
 }
 
+const CATEGORY_CHOICES: ReadonlyArray<{ value: FeedbackCategory; label: string }> = [
+  { value: 'installation', label: '安装' },
+  { value: 'startup', label: '启动' },
+  { value: 'invocation', label: '调用' },
+  { value: 'compatibility', label: '兼容性' },
+  { value: 'reliability', label: '稳定性' },
+  { value: 'performance', label: '性能' },
+  { value: 'result_quality', label: '结果质量' },
+  { value: 'general', label: '整体体验' },
+]
+
 /** Latest durable assistant identity from the rc.6 conversation projection. */
 export function latestAssistantMessageId(nodes: readonly ConversationNode[]): MessageId | undefined {
   for (let index = nodes.length - 1; index >= 0; index -= 1) {
@@ -60,6 +75,7 @@ export function ExperienceResultCard({
   const view = usePluginLab(value => value)
   const latestMessageId = useSession(snapshot => latestAssistantMessageId(snapshot.nodes))
   const [open, setOpen] = useState(false)
+  const [selectedVerdict, setSelectedVerdict] = useState<ExperienceVerdict>()
   if (!visible(view, messageId, latestMessageId)) return null
   const pending = view.pending?.messageId === messageId ? view.pending : undefined
   const busy = pending?.phase === 'saving' || pending?.phase === 'joining'
@@ -70,15 +86,32 @@ export function ExperienceResultCard({
       </button>
       {open && (
         <span role="dialog" aria-label="插件体验结果" style={panelStyle}>
-          <strong style={{ display: 'block', marginBottom: 9 }}>你觉得这个插件好用吗？</strong>
+          <strong style={{ display: 'block', marginBottom: 9 }}>
+            {selectedVerdict === undefined ? '你觉得这个插件好用吗？' : '选择一个不涉及任务内容的大类'}
+          </strong>
           <span style={{ display: 'block', marginBottom: 9, color: 'var(--dsw-alias-label-secondary)' }}>
-            Agent 只知道运行状态，不会读取会话或日志替你判断。
+            Agent 可以建议有限大类，但不会把当前任务、会话或日志写进摘要。
           </span>
-          {pending === undefined && (
+          {pending === undefined && selectedVerdict === undefined && (
             <span style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 7 }}>
-              <button type="button" style={choiceStyle} onClick={() => { void record(messageId, 'good') }}>好用</button>
-              <button type="button" style={choiceStyle} onClick={() => { void record(messageId, 'mixed') }}>一般</button>
-              <button type="button" style={choiceStyle} onClick={() => { void record(messageId, 'bad') }}>不好用</button>
+              <button type="button" style={choiceStyle} onClick={() => { setSelectedVerdict('good') }}>好用</button>
+              <button type="button" style={choiceStyle} onClick={() => { setSelectedVerdict('mixed') }}>一般</button>
+              <button type="button" style={choiceStyle} onClick={() => { setSelectedVerdict('bad') }}>不好用</button>
+            </span>
+          )}
+          {pending === undefined && selectedVerdict !== undefined && (
+            <span style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 7 }}>
+              {CATEGORY_CHOICES.map(choice => (
+                <button
+                  key={choice.value}
+                  type="button"
+                  style={choiceStyle}
+                  onClick={() => { void record(messageId, selectedVerdict, choice.value) }}
+                >
+                  {choice.label}
+                </button>
+              ))}
+              <button type="button" style={choiceStyle} onClick={() => { setSelectedVerdict(undefined) }}>返回</button>
             </span>
           )}
           {pending !== undefined && (
@@ -88,16 +121,20 @@ export function ExperienceResultCard({
               </span>
               {pending.phase === 'local' && (
                 <button type="button" style={{ ...choiceStyle, background: 'var(--dsw-alias-interactive-bg-primary)' }} onClick={() => { void join() }}>
-                  {shareLabel(pending.verdict)}
+                  确认并提交：{shareLabel(pending.verdict)}
                 </button>
               )}
               {(pending.phase === 'joined' || pending.phase === 'error') && (
-                <button type="button" style={choiceStyle} onClick={() => { dismiss(); setOpen(false) }}>完成</button>
+                <button type="button" style={choiceStyle} onClick={() => {
+                  dismiss()
+                  setSelectedVerdict(undefined)
+                  setOpen(false)
+                }}>完成</button>
               )}
             </span>
           )}
           <small style={{ display: 'block', marginTop: 10, color: 'var(--dsw-alias-label-tertiary)' }}>
-            第一步只保存在本机；加入跟进只发送插件、版本、状态枚举和你的选择。网络传输并非绝对匿名。
+            提交前会显示完整脱敏预览；只发送插件、版本、状态、体验和大类枚举。网络传输并非绝对匿名。
           </small>
         </span>
       )}

@@ -1,10 +1,11 @@
-/** Zero-content plugin health and user-confirmed feedback loop for DeepSeek Harness. */
+/** Task-agnostic plugin health and user-confirmed feedback loop for DeepSeek Harness. */
 import z from '@deepseek-ai/schemastery';
-import { createAgentAssessmentTool } from './agent-tool.js';
+import { createAgentAssessmentTool, createAgentPreviewTool } from './agent-tool.js';
 import { healthText, probeLoaderHealth } from './health.js';
-import { JOIN_USAGE, parseJoinTarget, parseReceiptId, parseStartInput, parseVerdict, RESULT_USAGE, RETEST_USAGE, START_USAGE, } from './input.js';
-import { FEEDBACK_SCHEMA_VERSION, } from './protocol.js';
+import { JOIN_USAGE, parseJoinTarget, parseReceiptId, parseResultInput, parseStartInput, RESULT_USAGE, RETEST_USAGE, START_USAGE, } from './input.js';
+import { FEEDBACK_SCHEMA_VERSION, FEEDBACK_CATEGORIES, } from './protocol.js';
 import { FeedbackStore } from './storage.js';
+import { fixedSummary, renderUploadPreview } from './summary.js';
 import { ExperienceUploader } from './uploader.js';
 export const name = 'omdsh-plugin-lab';
 export const inject = ['commands'];
@@ -27,14 +28,13 @@ function health(ctx, plugin) {
     return probeLoaderHealth(ctx.get('loader'), plugin.moduleName);
 }
 function assessment(status) {
-    return { health: status, experience: 'unknown', userConfirmationRequired: true };
-}
-function verdictText(verdict) {
-    if (verdict === 'good')
-        return '好用';
-    if (verdict === 'mixed')
-        return '一般';
-    return '不好用';
+    return {
+        health: status,
+        experience: 'unknown',
+        feedbackCategories: FEEDBACK_CATEGORIES,
+        summaryIsTemplateOnly: true,
+        userConfirmationRequired: true,
+    };
 }
 function renderReceipt(receipt) {
     const lines = ['已发送严格最小化反馈。'];
@@ -93,10 +93,26 @@ export function apply(ctx, rawConfig) {
         const state = key === undefined ? undefined : trials.get(key);
         return assessment(state === undefined ? 'unknown' : health(ctx, state.plugin));
     };
+    const previewTrial = (key, experience, category) => {
+        const state = key === undefined ? undefined : trials.get(key);
+        if (state === undefined)
+            throw new TypeError('no active Plugin Lab trial');
+        const status = health(ctx, state.plugin);
+        return {
+            plugin: state.plugin,
+            health: status,
+            experience,
+            category,
+            summary: fixedSummary(state.plugin, status, experience, category),
+            willUpload: false,
+            userConfirmationRequired: true,
+        };
+    };
     // Optional capability: headless command-only tests still work, while a normal
     // rc.6 Agent runtime receives the closed, zero-argument assessment tool.
     ctx.inject(['tools'], toolCtx => {
         toolCtx.tools.register(createAgentAssessmentTool(agent => assessTrial(agentSessionKey(agent))));
+        toolCtx.tools.register(createAgentPreviewTool((agent, experience, category) => (previewTrial(agentSessionKey(agent), experience, category))));
     });
     const beginTrial = (invocation, input, retestOfReceiptId) => {
         const key = sessionKey(invocation);
@@ -113,7 +129,7 @@ export function apply(ctx, rawConfig) {
             text: [
                 `试用已开始：${input.plugin.moduleName}${input.plugin.version === undefined ? '' : `#${input.plugin.version}`}`,
                 `运行状态：${healthText(health(ctx, input.plugin))}`,
-                '完成后由你选择“好用 / 一般 / 不好用”；Agent 不会读取会话或日志替你判断。',
+                '完成后由你选择体验和一个脱敏大类；Agent 只能用有限枚举生成固定模板预览。',
             ].join('\n'),
         };
     };
@@ -146,7 +162,7 @@ export function apply(ctx, rawConfig) {
                 : [
                     `插件：${state.plugin.moduleName}`,
                     `运行状态：${healthText(result.health)}`,
-                    '主观体验：未确认。探活没有读取日志、会话、异常或文件。',
+                    '主观体验：未确认。探活没有读取日志、会话、异常或文件。Agent 可建议大类，但不能提交任务摘要。',
                 ].join('\n'),
         };
     };
@@ -156,8 +172,11 @@ export function apply(ctx, rawConfig) {
         if (state === undefined)
             return { kind: 'error', text: `没有进行中的插件试用。先运行 ${START_USAGE}` };
         let verdict;
+        let category;
         try {
-            verdict = parseVerdict(invocation.rawInput);
+            const parsed = parseResultInput(invocation.rawInput);
+            verdict = parsed.verdict;
+            category = parsed.category;
         }
         catch {
             return { kind: 'error', text: RESULT_USAGE };
@@ -169,6 +188,7 @@ export function apply(ctx, rawConfig) {
             plugin: state.plugin,
             health: health(ctx, state.plugin),
             experience: verdict,
+            category,
             source: 'user_confirmed',
             ...state.retestOfReceiptId === undefined ? {} : { retestOfReceiptId: state.retestOfReceiptId },
         };
@@ -177,11 +197,9 @@ export function apply(ctx, rawConfig) {
         return {
             kind: 'success',
             text: [
-                `运行状态：${healthText(event.health)}`,
-                `主观体验：${verdictText(verdict)}（由你确认）`,
+                ...renderUploadPreview(event),
                 `已只保存到本机：${store.eventsPath}`,
-                '记录只有公开插件 ID/版本、状态枚举和你的选择；不含日志、会话、时间、环境或稳定身份。',
-                '运行 /omdsh-join latest 才会发送屏幕上这组有限字段。',
+                '请检查以上预览；只有运行 /omdsh-join latest 才会发送这组有限字段。',
             ].join('\n'),
         };
     };
@@ -252,8 +270,8 @@ export function apply(ctx, rawConfig) {
         text: [
             `结构化分享：${uploader === undefined ? '未启用' : '只能由用户逐次运行 /omdsh-join 触发'}`,
             '探活：仅本地读取 DSH Host 的 Loader/Fiber 生命周期枚举，不访问插件对象或网络。',
-            'Agent：零参数工具只返回 health、experience=unknown、userConfirmationRequired=true。',
-            '可发送字段：schemaVersion、type、随机单次 eventId、公开插件 ID/版本、health、experience、source。',
+            'Agent：探活工具零参数；预览工具只接受体验和大类枚举，固定模板预览不会存储或发送。',
+            '可发送字段：schemaVersion、type、随机单次 eventId、公开插件 ID/版本、health、experience、category、source。',
             '绝不读取或发送：日志、异常、堆栈、崩溃指纹、Prompt、回复、Tool 数据、文件、路径、环境、时间、用户/设备/安装/Session ID。',
             '网络仍会自然暴露传输元数据，因此本插件不宣称匿名；服务端必须禁止持久化 IP、User-Agent 和请求体日志。',
             `本地最小化数据：${store.dataDir}`,
@@ -274,15 +292,15 @@ export function apply(ctx, rawConfig) {
     });
     ctx.commands.register({
         name: 'omdsh-result',
-        description: '由用户确认主观体验；只保存在本机',
-        input: { hint: '<good|mixed|bad>' },
+        description: '由用户确认体验与脱敏大类，生成本地上传预览',
+        input: { hint: `<good|mixed|bad> <${FEEDBACK_CATEGORIES.join('|')}>` },
         recordInput: false,
         handler: submitResult,
     });
     ctx.commands.register({
         name: 'omdsh-feedback',
-        description: '兼容入口：由用户确认主观体验；只保存在本机',
-        input: { hint: '<good|mixed|bad>' },
+        description: '兼容入口：由用户确认体验与脱敏大类，生成本地上传预览',
+        input: { hint: `<good|mixed|bad> <${FEEDBACK_CATEGORIES.join('|')}>` },
         recordInput: false,
         handler: submitResult,
     });

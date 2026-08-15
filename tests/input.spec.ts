@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseJoinTarget, parseReceiptId, parseStartInput, parseVerdict } from '../src/input.js'
+import { parseJoinTarget, parseReceiptId, parseResultInput, parseStartInput } from '../src/input.js'
 
 describe('closed command inputs', () => {
   it('accepts only a public module and optional bounded version', () => {
@@ -16,12 +16,13 @@ describe('closed command inputs', () => {
     expect(() => parseStartInput(' ')).toThrow('/omdsh-start')
   })
 
-  it('accepts only finite user-confirmed verdicts with no notes or flags', () => {
-    expect(parseVerdict('good')).toBe('good')
-    expect(parseVerdict('mixed')).toBe('mixed')
-    expect(parseVerdict('bad')).toBe('bad')
-    expect(() => parseVerdict('bad secret-note')).toThrow('/omdsh-result')
-    expect(() => parseVerdict('worked')).toThrow('/omdsh-result')
+  it('accepts only finite verdict and task-agnostic category alphabets', () => {
+    expect(parseResultInput('good installation')).toEqual({ verdict: 'good', category: 'installation' })
+    expect(parseResultInput('mixed result_quality')).toEqual({ verdict: 'mixed', category: 'result_quality' })
+    expect(parseResultInput('bad general')).toEqual({ verdict: 'bad', category: 'general' })
+    expect(() => parseResultInput('bad secret-note')).toThrow('/omdsh-result')
+    expect(() => parseResultInput('bad reliability private-task')).toThrow('/omdsh-result')
+    expect(() => parseResultInput('worked general')).toThrow('/omdsh-result')
   })
 
   it('accepts one join target and rejects extra arguments', () => {

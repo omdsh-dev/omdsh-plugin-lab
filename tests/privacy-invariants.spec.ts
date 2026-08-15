@@ -1,28 +1,32 @@
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { describe, expect, it } from 'vitest'
-import { createAgentAssessmentTool } from '../src/agent-tool.js'
+import { createAgentAssessmentTool, createAgentPreviewTool } from '../src/agent-tool.js'
 import { probeLoaderHealth } from '../src/health.js'
-import { uploadPayload, type FeedbackEventV2, type LocalFeedbackRecord } from '../src/protocol.js'
+import {
+  FEEDBACK_CATEGORIES, uploadPayload, type FeedbackEventV3, type LocalFeedbackRecord,
+} from '../src/protocol.js'
+import { fixedSummary } from '../src/summary.js'
 
-function event(eventId = crypto.randomUUID()): FeedbackEventV2 {
+function event(eventId = crypto.randomUUID()): FeedbackEventV3 {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     type: 'feedback.signal',
     eventId,
     plugin: { moduleName: '@example/plugin', version: '1.0.0' },
     health: 'ok',
     experience: 'good',
+    category: 'general',
     source: 'user_confirmed',
   }
 }
 
-describe('zero-content privacy invariants', () => {
+describe('task-agnostic summary privacy invariants', () => {
   it('uses the local packet byte-for-byte as the upload packet', () => {
     const packet = event()
     const record: LocalFeedbackRecord = { event: packet, requestedShare: true }
     expect(uploadPayload(record)).toBe(packet)
     expect(Object.keys(uploadPayload(record)).sort()).toEqual([
-      'eventId', 'experience', 'health', 'plugin', 'schemaVersion', 'source', 'type',
+      'category', 'eventId', 'experience', 'health', 'plugin', 'schemaVersion', 'source', 'type',
     ])
   })
 
@@ -41,7 +45,8 @@ describe('zero-content privacy invariants', () => {
 
   it('gives the Agent a closed zero-argument and closed enum-only contract', async () => {
     const tool = createAgentAssessmentTool(() => ({
-      health: 'ok', experience: 'unknown', userConfirmationRequired: true,
+      health: 'ok', experience: 'unknown', feedbackCategories: FEEDBACK_CATEGORIES,
+      summaryIsTemplateOnly: true, userConfirmationRequired: true,
     }))
     expect(tool.parameters).toEqual({
       type: 'object', properties: {}, required: [], additionalProperties: false,
@@ -51,7 +56,10 @@ describe('zero-content privacy invariants', () => {
       agent: undefined,
       arguments: {},
     } as never)
-    expect(result).toEqual({ health: 'ok', experience: 'unknown', userConfirmationRequired: true })
+    expect(result).toEqual({
+      health: 'ok', experience: 'unknown', feedbackCategories: FEEDBACK_CATEGORIES,
+      summaryIsTemplateOnly: true, userConfirmationRequired: true,
+    })
     await expect(tool.execute({ reason: 'CANARY_SECRET' }, {
       agent: undefined,
       arguments: { reason: 'CANARY_SECRET' },
@@ -60,10 +68,33 @@ describe('zero-content privacy invariants', () => {
 
   it('cannot derive subjective experience when no user verdict exists', () => {
     const tool = createAgentAssessmentTool((_agent: Agent | undefined) => ({
-      health: 'error', experience: 'unknown', userConfirmationRequired: true,
+      health: 'error', experience: 'unknown', feedbackCategories: FEEDBACK_CATEGORIES,
+      summaryIsTemplateOnly: true, userConfirmationRequired: true,
     }))
     expect(JSON.stringify(tool.output.schema)).not.toContain('good')
     expect(JSON.stringify(tool.output.schema)).not.toContain('bad')
+  })
+
+  it('lets the Agent preview finite categories without accepting or uploading task text', async () => {
+    const plugin = { moduleName: '@example/plugin', version: '1.0.0' }
+    const tool = createAgentPreviewTool((_agent, experience, category) => ({
+      plugin,
+      health: 'error',
+      experience,
+      category,
+      summary: fixedSummary(plugin, 'error', experience, category),
+      willUpload: false,
+      userConfirmationRequired: true,
+    }))
+    const result = await tool.execute({ experience: 'bad', category: 'reliability' }, {
+      agent: undefined, arguments: {},
+    } as never)
+    expect(result).toMatchObject({
+      category: 'reliability', willUpload: false, userConfirmationRequired: true,
+    })
+    await expect(tool.execute({
+      experience: 'bad', category: 'reliability', summary: 'CANARY_PRIVATE_TASK',
+    }, { agent: undefined, arguments: {} } as never)).rejects.toThrow('finite enums only')
   })
 
   it('satisfies content non-interference for arbitrary private canaries', () => {

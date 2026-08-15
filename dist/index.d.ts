@@ -1,4 +1,4 @@
-/** Zero-content plugin health and user-confirmed feedback loop for DeepSeek Harness. */
+/** Task-agnostic plugin health and user-confirmed feedback loop for DeepSeek Harness. */
 import type { Context } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
 export declare const name = "omdsh-plugin-lab";

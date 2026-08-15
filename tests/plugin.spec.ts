@@ -20,7 +20,7 @@ async function runtime(config: Parameters<typeof plugin.apply>[1]) {
 }
 
 describe('DSH strict feedback integration', () => {
-  it('registers one-click health and records only the closed v2 packet', async () => {
+  it('registers one-click health and records only the closed v3 category packet', async () => {
     const root = mkdtempSync(join(tmpdir(), 'omdsh-plugin-lab-'))
     const dataDir = join(root, 'data')
     const { ctx, fiber, agent, signal } = await runtime({ dataDir })
@@ -37,24 +37,26 @@ describe('DSH strict feedback integration', () => {
     expect(health?.result.text).toContain('暂时无法判断')
     expect(health?.result.text).toContain('没有读取日志')
 
-    const feedback = await ctx.commands.execute(agent, '/omdsh-result bad', signal)
+    const feedback = await ctx.commands.execute(agent, '/omdsh-result bad reliability', signal)
     expect(feedback?.result.text).toContain('不好用（由你确认）')
-    expect(feedback?.result.text).toContain('不含日志')
-    const stored = JSON.parse(readFileSync(join(dataDir, 'feedback-v2.ndjson'), 'utf8').trim())
+    expect(feedback?.result.text).toContain('不会上传：当前任务')
+    expect(feedback?.result.text).toContain('稳定性（reliability）')
+    const stored = JSON.parse(readFileSync(join(dataDir, 'feedback-v3.ndjson'), 'utf8').trim())
     expect(stored).toEqual({
       event: {
-        schemaVersion: 2,
+        schemaVersion: 3,
         type: 'feedback.signal',
         eventId: expect.any(String),
         plugin: { moduleName: '@example/plugin', version: '1.0.0' },
         health: 'unknown',
         experience: 'bad',
+        category: 'reliability',
         source: 'user_confirmed',
       },
       requestedShare: false,
     })
     const forbidden = [
-      'participantId', 'occurredAt', 'taskId', 'environment', 'signals', 'note',
+      'participantId', 'occurredAt', 'taskId', 'environment', 'signals', 'note', 'summary',
       'message', 'stack', 'crash', 'session', 'locale', 'platform', 'path',
     ]
     for (const key of forbidden) expect(stored.event).not.toHaveProperty(key)
@@ -70,7 +72,7 @@ describe('DSH strict feedback integration', () => {
       retryIntervalMs: 60_000,
     })
     await ctx.commands.execute(agent, '/omdsh-start plugin', signal)
-    const feedback = await ctx.commands.execute(agent, '/omdsh-result good', signal)
+    const feedback = await ctx.commands.execute(agent, '/omdsh-result good general', signal)
     expect(feedback?.result.text).toContain('已只保存到本机')
     await fiber.dispose()
   })
@@ -98,21 +100,22 @@ describe('DSH strict feedback integration', () => {
       retryIntervalMs: 60_000,
     })
     await ctx.commands.execute(agent, '/omdsh-start plugin#1.0.0', signal)
-    await ctx.commands.execute(agent, '/omdsh-result mixed', signal)
+    await ctx.commands.execute(agent, '/omdsh-result mixed compatibility', signal)
     expect(posts).toBe(0)
     const joined = await ctx.commands.execute(agent, '/omdsh-join latest', signal)
     expect(joined?.result.text).toContain('PL-STRICT')
     expect(posts).toBe(1)
     const packet = JSON.parse(body) as Record<string, unknown>
     expect(Object.keys(packet).sort()).toEqual([
-      'eventId', 'experience', 'health', 'plugin', 'schemaVersion', 'source', 'type',
+      'category', 'eventId', 'experience', 'health', 'plugin', 'schemaVersion', 'source', 'type',
     ])
     expect(packet).toMatchObject({
-      schemaVersion: 2,
+      schemaVersion: 3,
       type: 'feedback.signal',
       plugin: { moduleName: 'plugin', version: '1.0.0' },
       health: 'unknown',
       experience: 'mixed',
+      category: 'compatibility',
       source: 'user_confirmed',
     })
     await fiber.dispose()
@@ -125,7 +128,7 @@ describe('DSH strict feedback integration', () => {
     const start = await ctx.commands.execute(agent, '/omdsh-start plugin private-task-label', signal)
     expect(start?.result.kind).toBe('error')
     await ctx.commands.execute(agent, '/omdsh-start plugin', signal)
-    const result = await ctx.commands.execute(agent, '/omdsh-result bad secret-note', signal)
+    const result = await ctx.commands.execute(agent, '/omdsh-result bad reliability secret-note', signal)
     expect(result?.result.kind).toBe('error')
     await fiber.dispose()
   })
@@ -141,8 +144,8 @@ describe('DSH strict feedback integration', () => {
       step: 1,
       message: { role: 'assistant', content: [{ type: 'text', text: 'CANARY_SECRET_TOKEN' }] } as never,
     }, { surfaceOp: 'append' })
-    await ctx.commands.execute(agent, '/omdsh-result good', signal)
-    const stored = readFileSync(join(root, 'data', 'feedback-v2.ndjson'), 'utf8')
+    await ctx.commands.execute(agent, '/omdsh-result good result_quality', signal)
+    const stored = readFileSync(join(root, 'data', 'feedback-v3.ndjson'), 'utf8')
     expect(stored).not.toContain('CANARY_SECRET_TOKEN')
     await fiber.dispose()
     expect(process.listeners('uncaughtExceptionMonitor')).toEqual(before)

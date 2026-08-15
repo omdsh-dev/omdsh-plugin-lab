@@ -29,6 +29,7 @@ export class MemoryRepository implements ExperienceRepository {
         ...event.pluginVersion === undefined ? {} : { pluginVersion: event.pluginVersion },
         health: event.health,
         experience: event.experience,
+        category: event.category,
         symptom,
         status: 'received',
         similarReports: 0,

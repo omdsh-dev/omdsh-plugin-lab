@@ -37,7 +37,7 @@ function propsFor(controller: LabController, messageId: MessageId): ExperienceRe
     sessionId: SESSION,
     useSession: sessionHook,
     usePluginLab,
-    record: (id, outcome) => controller.record(id, outcome),
+    record: (id, outcome, category) => controller.record(id, outcome, category),
     join: () => controller.join(),
     dismiss: () => { controller.dismiss() },
   } as ExperienceResultCardProps
@@ -68,10 +68,11 @@ describe('rc.6 client components', () => {
     rendered.rerender(<ExperienceResultCard {...propsFor(controller, LATEST)} />)
     fireEvent.click(screen.getByRole('button', { name: '体验结果' }))
     fireEvent.click(screen.getByRole('button', { name: '不好用' }))
+    fireEvent.click(screen.getByRole('button', { name: '稳定性' }))
     await screen.findByText('已只保存在本机')
-    expect(execute).toHaveBeenLastCalledWith(SESSION, '/omdsh-result bad')
+    expect(execute).toHaveBeenLastCalledWith(SESSION, '/omdsh-result bad reliability')
 
-    fireEvent.click(screen.getByRole('button', { name: '加入并等待修复' }))
+    fireEvent.click(screen.getByRole('button', { name: '确认并提交：加入并等待修复' }))
     await screen.findByText('问题回执：PL-RC6')
     expect(execute).toHaveBeenLastCalledWith(SESSION, '/omdsh-join latest')
     expect(screen.getByRole('button', { name: '完成' })).toBeDefined()
