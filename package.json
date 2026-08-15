@@ -82,6 +82,12 @@
   "dependencies": {
     "@deepseek-ai/schemastery": "3.18.1"
   },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@deepseek-ai/dsh-subprocess-local",
+      "node-pty"
+    ]
+  },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.1",
     "@deepseek-ai/dsh": "0.1.0-rc.6",
