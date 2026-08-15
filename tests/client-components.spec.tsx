@@ -28,7 +28,7 @@ function propsFor(controller: LabController): PluginLabButtonProps {
   }
   return {
     usePluginLab,
-    record: (verdict, category) => controller.record(undefined, verdict, category),
+    record: (verdict, category) => controller.record(verdict, category),
     join: () => controller.join(),
     dismiss: () => { controller.dismiss() },
     checkHealth: () => controller.probe(),
@@ -42,7 +42,7 @@ describe('rc.6 lightweight client entry', () => {
     render(<PluginLabButton {...propsFor(new LabController(remote({ probe }), SESSION))} />)
 
     expect(screen.getAllByRole('button')).toHaveLength(1)
-    fireEvent.click(screen.getByRole('button', { name: '插件反馈' }))
+    fireEvent.click(screen.getByRole('button', { name: '让 Agent 帮我反馈' }))
     await screen.findByText('未选择试用插件')
     expect(probe).toHaveBeenCalledOnce()
     expect(probe).toHaveBeenLastCalledWith(SESSION)
@@ -53,21 +53,22 @@ describe('rc.6 lightweight client entry', () => {
     const probe: PluginLabRemote['probe'] = vi.fn(async () => success({ active: true, text: '@example/plugin · 当前运行 OK' }))
     const record: PluginLabRemote['record'] = vi.fn(async () => success({
       ok: true,
-      text: '待确认：稳定性 · 不好用\n不含当前任务、对话或日志；确认提交后才会发送。',
+      text: '待发送：稳定性 · 不好用\n不会附带本地任务、对话、Prompt、回复、日志或文件；点击“确认发送这条反馈”前不会发送。',
     }))
     const join: PluginLabRemote['join'] = vi.fn(async () => success({ ok: true, text: '已提交 · 同类 2 条 · clustered' }))
     const controller = new LabController(remote({ probe, record, join }), SESSION)
     controller.setTrialActive(true)
     render(<PluginLabButton {...propsFor(controller)} />)
 
-    fireEvent.click(screen.getByRole('button', { name: '插件反馈 ·' }))
+    fireEvent.click(screen.getByRole('button', { name: '让 Agent 帮我反馈' }))
     await screen.findByText('@example/plugin · 当前运行 OK')
     fireEvent.click(screen.getByRole('button', { name: '不好用' }))
     fireEvent.click(screen.getByRole('button', { name: '稳定性' }))
-    await screen.findByText(/待确认：稳定性/)
+    await screen.findByText(/待发送：稳定性/)
     expect(record).toHaveBeenLastCalledWith(SESSION, 'bad', 'reliability')
 
-    fireEvent.click(screen.getByRole('button', { name: '确认提交并等待修复' }))
+    expect(screen.getByText(/不会附带当前任务、本地对话/)).toBeDefined()
+    fireEvent.click(screen.getByRole('button', { name: '确认发送这条反馈' }))
     await screen.findByText('已提交 · 同类 2 条 · clustered')
     expect(join).toHaveBeenLastCalledWith(SESSION)
     expect(screen.getByRole('button', { name: '完成' })).toBeDefined()
@@ -76,7 +77,7 @@ describe('rc.6 lightweight client entry', () => {
   it('keeps progress as a secondary action inside the same panel', async () => {
     const inbox: PluginLabRemote['inbox'] = vi.fn(async () => success('暂无新进展'))
     render(<PluginLabButton {...propsFor(new LabController(remote({ inbox }), SESSION))} />)
-    fireEvent.click(screen.getByRole('button', { name: '插件反馈' }))
+    fireEvent.click(screen.getByRole('button', { name: '让 Agent 帮我反馈' }))
     await screen.findByText('未选择试用插件')
     fireEvent.click(screen.getByRole('button', { name: '查看进展' }))
     await waitFor(() => { expect(screen.getByText('暂无新进展')).toBeDefined() })

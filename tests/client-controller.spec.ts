@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { MessageId } from '@deepseek-ai/dsh-client-connection/client'
 import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import { LabController, type PluginLabRemote } from '../src/client/controller.js'
 
@@ -24,12 +23,13 @@ describe('silent panel controller', () => {
     const controller = new LabController(remote({ record, join, probe }), SESSION)
     controller.setTrialActive(true)
 
-    await controller.record('latest' as MessageId, 'bad', 'reliability')
+    await controller.record('bad', 'reliability')
     expect(record).toHaveBeenLastCalledWith(SESSION, 'bad', 'reliability')
     expect(controller.getSnapshot()).toMatchObject({
       active: false,
       pending: { verdict: 'bad', category: 'reliability', phase: 'local' },
     })
+    expect(controller.getSnapshot().pending).not.toHaveProperty('messageId')
 
     await controller.join()
     expect(join).toHaveBeenLastCalledWith(SESSION)
@@ -45,7 +45,7 @@ describe('silent panel controller', () => {
     }))
     const controller = new LabController(remote({ record: disconnected }), SESSION)
     controller.setTrialActive(true)
-    await controller.record('message' as MessageId, 'mixed', 'performance')
+    await controller.record('mixed', 'performance')
     expect(controller.getSnapshot().pending).toMatchObject({
       phase: 'error', text: '连接已断开 (disconnected)',
     })
@@ -53,7 +53,7 @@ describe('silent panel controller', () => {
     const rejected: PluginLabRemote['record'] = vi.fn(async () => success({ ok: false, text: '没有进行中的插件试用。' }))
     const second = new LabController(remote({ record: rejected }), SESSION)
     second.setTrialActive(true)
-    await second.record('message' as MessageId, 'bad', 'general')
+    await second.record('bad', 'general')
     expect(second.getSnapshot().pending).toMatchObject({
       phase: 'error', text: '没有进行中的插件试用。',
     })

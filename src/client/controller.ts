@@ -1,5 +1,4 @@
 import type { ClientRemote } from '@deepseek-ai/dsh-api-remotes/client'
-import type { MessageId } from '@deepseek-ai/dsh-client-connection/client'
 import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ExperienceVerdict, FeedbackCategory } from '../protocol.js'
@@ -8,7 +7,6 @@ import type { ExperienceVerdict, FeedbackCategory } from '../protocol.js'
 export type PluginLabRemote = Pick<ClientRemote['pluginLab'], 'probe' | 'record' | 'join' | 'inbox'>
 
 export interface PendingResult {
-  readonly messageId?: MessageId
   readonly verdict: ExperienceVerdict
   readonly category: FeedbackCategory
   readonly phase: 'saving' | 'local' | 'joining' | 'joined' | 'error'
@@ -43,24 +41,21 @@ export class LabController implements HostObservable<LabView> {
   }
 
   async record(
-    messageId: MessageId | undefined,
     verdict: ExperienceVerdict,
     category: FeedbackCategory,
   ): Promise<void> {
-    const identity = messageId === undefined ? {} : { messageId }
-    this.publish({ ...this.view, pending: { ...identity, verdict, category, phase: 'saving' } })
+    this.publish({ ...this.view, pending: { verdict, category, phase: 'saving' } })
     const settled = await this.call(() => this.remote.record(this.sessionId, verdict, category))
     if (settled.ok && settled.value.ok) {
       this.publish({
         ...this.view,
         active: false,
-        pending: { ...identity, verdict, category, phase: 'local', text: settled.value.text },
+        pending: { verdict, category, phase: 'local', text: settled.value.text },
       })
     } else {
       this.publish({
         ...this.view,
         pending: {
-          ...identity,
           verdict,
           category,
           phase: 'error',

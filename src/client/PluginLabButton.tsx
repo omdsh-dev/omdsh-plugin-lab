@@ -15,14 +15,15 @@ export interface PluginLabInjected {
 export type PluginLabButtonProps = PropsRuntime<'conversation.input.left'> & InjectFace<PluginLabInjected>
 
 const triggerStyle: CSSProperties = {
-  height: 28,
-  padding: '0 10px',
-  border: 'none',
+  minHeight: 30,
+  padding: '0 12px',
+  border: '1px solid var(--dsw-alias-border-secondary)',
   borderRadius: 14,
   cursor: 'pointer',
-  background: 'transparent',
-  color: 'var(--dsw-alias-label-tertiary)',
+  background: 'var(--dsw-alias-interactive-bg-hover)',
+  color: 'var(--dsw-alias-label-secondary)',
   fontSize: 12,
+  fontWeight: 600,
 }
 
 const panelStyle: CSSProperties = {
@@ -51,6 +52,15 @@ const choiceStyle: CSSProperties = {
   cursor: 'pointer',
 }
 
+const previewStyle: CSSProperties = {
+  display: 'grid',
+  gap: 8,
+  padding: 11,
+  border: '1px solid var(--dsw-alias-border-secondary)',
+  borderRadius: 10,
+  background: 'var(--dsw-alias-bg-secondary)',
+}
+
 const CATEGORY_CHOICES: ReadonlyArray<{ value: FeedbackCategory; label: string }> = [
   { value: 'installation', label: '安装' },
   { value: 'startup', label: '启动' },
@@ -61,12 +71,6 @@ const CATEGORY_CHOICES: ReadonlyArray<{ value: FeedbackCategory; label: string }
   { value: 'result_quality', label: '结果质量' },
   { value: 'general', label: '整体体验' },
 ]
-
-function shareLabel(verdict: ExperienceVerdict): string {
-  if (verdict === 'good') return '提交实测'
-  if (verdict === 'mixed') return '提交反馈'
-  return '提交并等待修复'
-}
 
 export function PluginLabButton({
   usePluginLab, record, join, dismiss, checkHealth, checkInbox,
@@ -93,13 +97,16 @@ export function PluginLabButton({
 
   return (
     <span style={{ position: 'relative', display: 'inline-flex' }}>
-      <button type="button" style={triggerStyle} onClick={openPanel}>
-        插件反馈{view.active ? ' ·' : ''}
+      <button type="button" aria-label="让 Agent 帮我反馈" style={triggerStyle} onClick={openPanel}>
+        让 Agent 帮我反馈{view.active ? ' ·' : ''}
       </button>
       {open && (
-        <span role="dialog" aria-label="插件反馈" style={panelStyle}>
+        <span role="dialog" aria-label="让 Agent 帮我反馈" style={panelStyle}>
           <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-            <strong>插件反馈</strong>
+            <span style={{ display: 'grid', gap: 2 }}>
+              <strong>让 Agent 帮你反馈</strong>
+              <small style={{ color: 'var(--dsw-alias-label-tertiary)' }}>只整理插件状态与点选项</small>
+            </span>
             <button type="button" aria-label="关闭插件反馈" style={{ ...triggerStyle, padding: '0 4px' }} onClick={() => { setOpen(false) }}>×</button>
           </span>
 
@@ -116,6 +123,9 @@ export function PluginLabButton({
           {pending === undefined && view.active && selectedVerdict === undefined && (
             <span style={{ display: 'grid', gap: 9, marginTop: 12 }}>
               <strong>这次体验怎么样？</strong>
+              <small style={{ color: 'var(--dsw-alias-label-tertiary)' }}>
+                Agent 不读取对话来猜测体验，这一项由你选择。
+              </small>
               <span style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 7 }}>
                 <button type="button" style={choiceStyle} onClick={() => { setSelectedVerdict('good') }}>好用</button>
                 <button type="button" style={choiceStyle} onClick={() => { setSelectedVerdict('mixed') }}>一般</button>
@@ -126,7 +136,7 @@ export function PluginLabButton({
 
           {pending === undefined && view.active && selectedVerdict !== undefined && (
             <span style={{ display: 'grid', gap: 9, marginTop: 12 }}>
-              <strong>主要是哪方面？</strong>
+              <strong>让 Agent 按哪个方面整理？</strong>
               <span style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 7 }}>
                 {CATEGORY_CHOICES.map(choice => (
                   <button
@@ -145,12 +155,20 @@ export function PluginLabButton({
 
           {pending !== undefined && (
             <span style={{ display: 'grid', gap: 9, marginTop: 12 }}>
-              <span style={{ whiteSpace: 'pre-wrap', color: 'var(--dsw-alias-label-secondary)' }}>
-                {pending.phase === 'saving' ? '正在生成脱敏预览…' : pending.phase === 'joining' ? '正在提交…' : pending.text}
+              <span style={previewStyle}>
+                <strong>{pending.phase === 'joined' ? '发送结果' : '发送前预览'}</strong>
+                <span style={{ whiteSpace: 'pre-wrap', color: 'var(--dsw-alias-label-secondary)' }}>
+                  {pending.phase === 'saving' ? 'Agent 正在生成固定模板预览…' : pending.phase === 'joining' ? '正在发送你确认的有限字段…' : pending.text}
+                </span>
+                {(pending.phase === 'local' || pending.phase === 'saving') && (
+                  <small style={{ color: 'var(--dsw-alias-label-tertiary)' }}>
+                    不会附带当前任务、本地对话、Prompt、回复或日志。
+                  </small>
+                )}
               </span>
               {pending.phase === 'local' && (
                 <button type="button" disabled={busy} style={{ ...choiceStyle, background: 'var(--dsw-alias-interactive-bg-primary)' }} onClick={() => { void join() }}>
-                  确认{shareLabel(pending.verdict)}
+                  确认发送这条反馈
                 </button>
               )}
               {(pending.phase === 'joined' || pending.phase === 'error') && (
@@ -176,7 +194,7 @@ export function PluginLabButton({
             >
               {inboxBusy ? '检查中…' : '查看进展'}
             </button>
-            <small style={{ color: 'var(--dsw-alias-label-tertiary)' }}>不读取任务、对话或日志</small>
+            <small style={{ color: 'var(--dsw-alias-label-tertiary)' }}>不会调用模型读取本地对话</small>
           </span>
           {inbox !== undefined && (
             <span style={{ display: 'block', marginTop: 7, color: 'var(--dsw-alias-label-secondary)', whiteSpace: 'pre-wrap' }}>
