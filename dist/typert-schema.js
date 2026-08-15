@@ -11,7 +11,17 @@ const category = z.union([
     z.literal('result_quality'),
     z.literal('general'),
 ]);
-const probeResult = z.object({ active: z.boolean().readonly(), text: z.string().readonly() });
+const health = z.union([
+    z.literal('ok'),
+    z.literal('unavailable'),
+    z.literal('error'),
+    z.literal('unknown'),
+]);
+const probeResult = z.object({
+    active: z.boolean().readonly(),
+    health: health.readonly(),
+    text: z.string().readonly(),
+});
 const actionResult = z.object({ ok: z.boolean().readonly(), text: z.string().readonly() });
 const textResult = z.string();
 export const PLUGIN_LAB_REMOTE_DESCRIPTORS = [

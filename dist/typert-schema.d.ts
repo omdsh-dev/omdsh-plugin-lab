@@ -27,6 +27,7 @@ export declare const PLUGIN_LAB_REMOTE_DESCRIPTORS: readonly [{
         readonly typeSymbol: "@oh-my-dsh/plugin-lab#PluginLabPanelProbe";
         readonly schema: z.ZodObject<{
             active: z.ZodReadonly<z.ZodBoolean>;
+            health: z.ZodReadonly<z.ZodUnion<readonly [z.ZodLiteral<"ok">, z.ZodLiteral<"unavailable">, z.ZodLiteral<"error">, z.ZodLiteral<"unknown">]>>;
             text: z.ZodReadonly<z.ZodString>;
         }, z.core.$strip>;
     };

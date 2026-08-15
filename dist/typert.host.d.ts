@@ -30,6 +30,7 @@ export declare const TYPERT: {
             readonly typeSymbol: "@oh-my-dsh/plugin-lab#PluginLabPanelProbe";
             readonly schema: import("zod").ZodObject<{
                 active: import("zod").ZodReadonly<import("zod").ZodBoolean>;
+                health: import("zod").ZodReadonly<import("zod").ZodUnion<readonly [import("zod").ZodLiteral<"ok">, import("zod").ZodLiteral<"unavailable">, import("zod").ZodLiteral<"error">, import("zod").ZodLiteral<"unknown">]>>;
                 text: import("zod").ZodReadonly<import("zod").ZodString>;
             }, import("zod/v4/core").$strip>;
         };

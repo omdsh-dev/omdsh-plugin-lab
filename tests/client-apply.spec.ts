@@ -57,6 +57,7 @@ function declare(slots: TestSlotRegistry): () => void {
       'conversation.chat.assistant-actions': { kind: 'list', scope: 'session' },
       'conversation.chat.commandview': { kind: 'keyed', scope: 'session' },
       'conversation.input.left': { kind: 'list', scope: 'session' },
+      'conversation.input.dock': { kind: 'list', scope: 'session' },
     },
   } as never, (() => null) as never)
 }
@@ -67,7 +68,7 @@ async function bench() {
   const panelRemote: PluginLabRemote = {
     probe: async sessionId => {
       calls.push({ method: 'probe', sessionId })
-      return { ok: true as const, value: { active: true, text: '运行正常' } }
+      return { ok: true as const, value: { active: true, health: 'unavailable' as const, text: '暂不可用' } }
     },
     record: async (sessionId) => {
       calls.push({ method: 'record', sessionId })
@@ -94,7 +95,7 @@ async function bench() {
   const declaration = declare(slots)
   const fiber = ctx.plugin({ inject: [...inject], apply })
   await fiber.await()
-  const pluginLabEntry = () => slots.entries('conversation.input.left')
+  const pluginLabEntry = () => slots.entries('conversation.input.dock')
     .find(entry => entry.options.id === 'omdsh-plugin-lab')
   const historyEntry = () => slots.entries('conversation.chat.commandview')
     .find(entry => entry.options.key === 'omdsh-history')
@@ -113,8 +114,9 @@ describe('rc.6 client plugin contract', () => {
     const b = await bench()
     expect(inject).toEqual(['slots', 'remote'])
     expect(b.mount).toHaveBeenCalledOnce()
-    expect(b.pluginLabEntry()?.options).toMatchObject({ id: 'omdsh-plugin-lab', order: 39 })
-    expect(b.slots.entries('conversation.input.left')).toHaveLength(1)
+    expect(b.pluginLabEntry()?.options).toMatchObject({ id: 'omdsh-plugin-lab', order: 15 })
+    expect(b.slots.entries('conversation.input.dock')).toHaveLength(1)
+    expect(b.slots.entries('conversation.input.left')).toHaveLength(0)
     expect(b.slots.entries('conversation.chat.assistant-actions')).toHaveLength(0)
     expect(b.historyEntry()?.options).toMatchObject({ key: 'omdsh-history' })
     await b.fiber.dispose()
@@ -128,13 +130,16 @@ describe('rc.6 client plugin contract', () => {
 
     b.ctx.emit('command/executed', sid('s1'), 'omdsh-start', { kind: 'success' })
     expect(first.hooks.pluginLab.getSnapshot().active).toBe(true)
+    await vi.waitFor(() => { expect(first.hooks.pluginLab.getSnapshot().health).toBe('unavailable') })
     b.ctx.emit('command/executed', sid('s1'), 'omdsh-result', { kind: 'error', text: 'not saved' })
     expect(first.hooks.pluginLab.getSnapshot().active).toBe(true)
     b.ctx.emit('command/executed', sid('s1'), 'omdsh-result', { kind: 'success' })
     expect(first.hooks.pluginLab.getSnapshot().active).toBe(false)
 
     b.ctx.emit('command/executed', sid('s2'), 'omdsh-retest', { kind: 'success' })
-    expect(pluginLabFace(b.pluginLabEntry(), sid('s2')).hooks.pluginLab.getSnapshot().active).toBe(true)
+    const second = pluginLabFace(b.pluginLabEntry(), sid('s2'))
+    expect(second.hooks.pluginLab.getSnapshot().active).toBe(true)
+    await vi.waitFor(() => { expect(second.hooks.pluginLab.getSnapshot().health).toBe('unavailable') })
     await b.fiber.dispose()
   })
 

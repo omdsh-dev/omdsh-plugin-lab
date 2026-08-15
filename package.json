@@ -1,6 +1,6 @@
 {
   "name": "@oh-my-dsh/plugin-lab",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "description": "DSH privacy-first plugin health, confirmed category summaries and aggregate fix flywheel",
   "license": "MIT",
   "type": "module",

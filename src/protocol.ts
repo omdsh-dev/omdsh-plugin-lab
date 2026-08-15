@@ -19,6 +19,7 @@ export type FeedbackCategory = typeof FEEDBACK_CATEGORIES[number]
 /** Silent panel response; unlike slash commands, this is never appended to the Session. */
 export interface PluginLabPanelProbe {
   readonly active: boolean
+  readonly health: HealthStatus
   readonly text: string
 }
 
