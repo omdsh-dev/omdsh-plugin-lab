@@ -1,0 +1,11 @@
+# Oh My DSH Plugin Lab is local-only until a deployment explicitly enables
+# anonymous sharing and configures an HTTPS ingest endpoint.
+- insert:
+    - id: omdsh-plugin-lab
+      name: '@oh-my-dsh/plugin-lab'
+      config:
+        allowAnonymousShare: false
+        authorizationEnv: OMDSH_PLUGIN_LAB_TOKEN
+        profileLabel: default
+        requestTimeoutMs: 5000
+        retryIntervalMs: 30000
