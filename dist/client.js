@@ -4110,13 +4110,34 @@ var LabController = class {
 const triggerStyle$1 = {
 	minHeight: 30,
 	padding: "0 12px",
-	border: "1px solid var(--dsw-alias-border-secondary)",
+	border: "1px solid #0b5e58",
 	borderRadius: 14,
 	cursor: "pointer",
-	background: "var(--dsw-alias-interactive-bg-hover)",
-	color: "var(--dsw-alias-label-secondary)",
+	background: "#0f766e",
+	color: "#ffffff",
+	boxShadow: "0 1px 2px rgba(15, 23, 42, .22)",
 	fontSize: 12,
 	fontWeight: 600
+};
+const secondaryButtonStyle = {
+	minHeight: 30,
+	padding: "0 10px",
+	border: "1px solid #475569",
+	borderRadius: 9,
+	cursor: "pointer",
+	background: "#26323d",
+	color: "#f8fafc",
+	fontSize: 12,
+	fontWeight: 600
+};
+const closeButtonStyle = {
+	...secondaryButtonStyle,
+	width: 28,
+	minHeight: 28,
+	padding: 0,
+	borderRadius: 8,
+	fontSize: 17,
+	lineHeight: 1
 };
 const panelStyle$1 = {
 	position: "absolute",
@@ -4125,30 +4146,39 @@ const panelStyle$1 = {
 	bottom: 34,
 	width: 314,
 	padding: 14,
-	border: "1px solid var(--dsw-alias-border-secondary)",
+	border: "1px solid #475569",
 	borderRadius: 12,
-	background: "var(--dsw-alias-bg-primary)",
-	color: "var(--dsw-alias-label-primary)",
-	boxShadow: "0 12px 36px rgba(0,0,0,.18)",
+	background: "#151b23",
+	color: "#f8fafc",
+	boxShadow: "0 16px 44px rgba(0, 0, 0, .48)",
 	fontSize: 13,
 	lineHeight: 1.45
 };
 const choiceStyle$1 = {
 	minHeight: 32,
-	border: "1px solid var(--dsw-alias-border-secondary)",
+	border: "1px solid #475569",
 	borderRadius: 9,
 	padding: "6px 9px",
-	background: "transparent",
-	color: "inherit",
-	cursor: "pointer"
+	background: "#26323d",
+	color: "#f8fafc",
+	cursor: "pointer",
+	boxShadow: "0 1px 1px rgba(15, 23, 42, .08)"
+};
+const confirmStyle = {
+	...choiceStyle$1,
+	borderColor: "#0b5e58",
+	background: "#0f766e",
+	color: "#ffffff",
+	fontWeight: 700,
+	boxShadow: "0 2px 5px rgba(15, 118, 110, .28)"
 };
 const previewStyle = {
 	display: "grid",
 	gap: 8,
 	padding: 11,
-	border: "1px solid var(--dsw-alias-border-secondary)",
+	border: "1px solid #334155",
 	borderRadius: 10,
-	background: "var(--dsw-alias-bg-secondary)"
+	background: "#0f172a"
 };
 const CATEGORY_CHOICES$1 = [
 	{
@@ -4234,16 +4264,13 @@ function PluginLabButton({ usePluginLab, record, join, dismiss, checkHealth, che
 							gap: 2
 						},
 						children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("strong", { children: "让 Agent 帮你反馈" }), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("small", {
-							style: { color: "var(--dsw-alias-label-tertiary)" },
+							style: { color: "#94a3b8" },
 							children: "只整理插件状态与点选项"
 						})]
 					}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
 						type: "button",
 						"aria-label": "关闭插件反馈",
-						style: {
-							...triggerStyle$1,
-							padding: "0 4px"
-						},
+						style: closeButtonStyle,
 						onClick: () => {
 							setOpen(false);
 						},
@@ -4255,7 +4282,7 @@ function PluginLabButton({ usePluginLab, record, join, dismiss, checkHealth, che
 					style: {
 						display: "block",
 						marginTop: 8,
-						color: "var(--dsw-alias-label-secondary)"
+						color: "#cbd5e1"
 					},
 					children: healthBusy ? "正在检查…" : health
 				}),
@@ -4263,7 +4290,7 @@ function PluginLabButton({ usePluginLab, record, join, dismiss, checkHealth, che
 					style: {
 						display: "block",
 						marginTop: 12,
-						color: "var(--dsw-alias-label-secondary)"
+						color: "#cbd5e1"
 					},
 					children: "还没有正在试用的插件。开始试用后，反馈会出现在这里。"
 				}),
@@ -4276,7 +4303,7 @@ function PluginLabButton({ usePluginLab, record, join, dismiss, checkHealth, che
 					children: [
 						/* @__PURE__ */ (0, react_jsx_runtime.jsx)("strong", { children: "这次体验怎么样？" }),
 						/* @__PURE__ */ (0, react_jsx_runtime.jsx)("small", {
-							style: { color: "var(--dsw-alias-label-tertiary)" },
+							style: { color: "#94a3b8" },
 							children: "Agent 不读取对话来猜测体验，这一项由你选择。"
 						}),
 						/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
@@ -4340,9 +4367,8 @@ function PluginLabButton({ usePluginLab, record, join, dismiss, checkHealth, che
 						/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
 							type: "button",
 							style: {
-								...triggerStyle$1,
-								justifySelf: "start",
-								padding: 0
+								...secondaryButtonStyle,
+								justifySelf: "start"
 							},
 							onClick: () => {
 								setSelectedVerdict(void 0);
@@ -4365,12 +4391,12 @@ function PluginLabButton({ usePluginLab, record, join, dismiss, checkHealth, che
 								/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
 									style: {
 										whiteSpace: "pre-wrap",
-										color: "var(--dsw-alias-label-secondary)"
+										color: "#cbd5e1"
 									},
 									children: pending.phase === "saving" ? "Agent 正在生成固定模板预览…" : pending.phase === "joining" ? "正在发送你确认的有限字段…" : pending.text
 								}),
 								(pending.phase === "local" || pending.phase === "saving") && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("small", {
-									style: { color: "var(--dsw-alias-label-tertiary)" },
+									style: { color: "#94a3b8" },
 									children: "不会附带当前任务、本地对话、Prompt、回复或日志。"
 								})
 							]
@@ -4378,10 +4404,7 @@ function PluginLabButton({ usePluginLab, record, join, dismiss, checkHealth, che
 						pending.phase === "local" && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
 							type: "button",
 							disabled: busy,
-							style: {
-								...choiceStyle$1,
-								background: "var(--dsw-alias-interactive-bg-primary)"
-							},
+							style: confirmStyle,
 							onClick: () => {
 								join();
 							},
@@ -4389,7 +4412,7 @@ function PluginLabButton({ usePluginLab, record, join, dismiss, checkHealth, che
 						}),
 						(pending.phase === "joined" || pending.phase === "error") && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
 							type: "button",
-							style: choiceStyle$1,
+							style: secondaryButtonStyle,
 							onClick: () => {
 								dismiss();
 								setSelectedVerdict(void 0);
@@ -4406,15 +4429,12 @@ function PluginLabButton({ usePluginLab, record, join, dismiss, checkHealth, che
 						gap: 10,
 						marginTop: 12,
 						paddingTop: 10,
-						borderTop: "1px solid var(--dsw-alias-border-secondary)"
+						borderTop: "1px solid #334155"
 					},
 					children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
 						type: "button",
 						disabled: inboxBusy,
-						style: {
-							...triggerStyle$1,
-							padding: 0
-						},
+						style: secondaryButtonStyle,
 						onClick: () => {
 							if (inbox !== void 0) return setInbox(void 0);
 							setInboxBusy(true);
@@ -4424,7 +4444,7 @@ function PluginLabButton({ usePluginLab, record, join, dismiss, checkHealth, che
 						},
 						children: inboxBusy ? "检查中…" : "查看进展"
 					}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("small", {
-						style: { color: "var(--dsw-alias-label-tertiary)" },
+						style: { color: "#94a3b8" },
 						children: "不会调用模型读取本地对话"
 					})]
 				}),
@@ -4432,7 +4452,7 @@ function PluginLabButton({ usePluginLab, record, join, dismiss, checkHealth, che
 					style: {
 						display: "block",
 						marginTop: 7,
-						color: "var(--dsw-alias-label-secondary)",
+						color: "#cbd5e1",
 						whiteSpace: "pre-wrap"
 					},
 					children: inbox

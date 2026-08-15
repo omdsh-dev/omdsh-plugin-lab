@@ -62,12 +62,15 @@ describe('rc.6 lightweight client entry', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '让 Agent 帮我反馈' }))
     await screen.findByText('@example/plugin · 当前运行 OK')
+    expect((screen.getByRole('button', { name: '让 Agent 帮我反馈' }) as HTMLButtonElement).style.background).not.toBe('transparent')
+    expect((screen.getByRole('button', { name: '好用' }) as HTMLButtonElement).style.background).not.toBe('transparent')
     fireEvent.click(screen.getByRole('button', { name: '不好用' }))
     fireEvent.click(screen.getByRole('button', { name: '稳定性' }))
     await screen.findByText(/待发送：稳定性/)
     expect(record).toHaveBeenLastCalledWith(SESSION, 'bad', 'reliability')
 
     expect(screen.getByText(/不会附带当前任务、本地对话/)).toBeDefined()
+    expect((screen.getByRole('button', { name: '确认发送这条反馈' }) as HTMLButtonElement).style.background).not.toBe('transparent')
     fireEvent.click(screen.getByRole('button', { name: '确认发送这条反馈' }))
     await screen.findByText('已提交 · 同类 2 条 · clustered')
     expect(join).toHaveBeenLastCalledWith(SESSION)

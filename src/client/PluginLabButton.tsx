@@ -17,13 +17,36 @@ export type PluginLabButtonProps = PropsRuntime<'conversation.input.left'> & Inj
 const triggerStyle: CSSProperties = {
   minHeight: 30,
   padding: '0 12px',
-  border: '1px solid var(--dsw-alias-border-secondary)',
+  border: '1px solid #0b5e58',
   borderRadius: 14,
   cursor: 'pointer',
-  background: 'var(--dsw-alias-interactive-bg-hover)',
-  color: 'var(--dsw-alias-label-secondary)',
+  background: '#0f766e',
+  color: '#ffffff',
+  boxShadow: '0 1px 2px rgba(15, 23, 42, .22)',
   fontSize: 12,
   fontWeight: 600,
+}
+
+const secondaryButtonStyle: CSSProperties = {
+  minHeight: 30,
+  padding: '0 10px',
+  border: '1px solid #475569',
+  borderRadius: 9,
+  cursor: 'pointer',
+  background: '#26323d',
+  color: '#f8fafc',
+  fontSize: 12,
+  fontWeight: 600,
+}
+
+const closeButtonStyle: CSSProperties = {
+  ...secondaryButtonStyle,
+  width: 28,
+  minHeight: 28,
+  padding: 0,
+  borderRadius: 8,
+  fontSize: 17,
+  lineHeight: 1,
 }
 
 const panelStyle: CSSProperties = {
@@ -33,32 +56,42 @@ const panelStyle: CSSProperties = {
   bottom: 34,
   width: 314,
   padding: 14,
-  border: '1px solid var(--dsw-alias-border-secondary)',
+  border: '1px solid #475569',
   borderRadius: 12,
-  background: 'var(--dsw-alias-bg-primary)',
-  color: 'var(--dsw-alias-label-primary)',
-  boxShadow: '0 12px 36px rgba(0,0,0,.18)',
+  background: '#151b23',
+  color: '#f8fafc',
+  boxShadow: '0 16px 44px rgba(0, 0, 0, .48)',
   fontSize: 13,
   lineHeight: 1.45,
 }
 
 const choiceStyle: CSSProperties = {
   minHeight: 32,
-  border: '1px solid var(--dsw-alias-border-secondary)',
+  border: '1px solid #475569',
   borderRadius: 9,
   padding: '6px 9px',
-  background: 'transparent',
-  color: 'inherit',
+  background: '#26323d',
+  color: '#f8fafc',
   cursor: 'pointer',
+  boxShadow: '0 1px 1px rgba(15, 23, 42, .08)',
+}
+
+const confirmStyle: CSSProperties = {
+  ...choiceStyle,
+  borderColor: '#0b5e58',
+  background: '#0f766e',
+  color: '#ffffff',
+  fontWeight: 700,
+  boxShadow: '0 2px 5px rgba(15, 118, 110, .28)',
 }
 
 const previewStyle: CSSProperties = {
   display: 'grid',
   gap: 8,
   padding: 11,
-  border: '1px solid var(--dsw-alias-border-secondary)',
+  border: '1px solid #334155',
   borderRadius: 10,
-  background: 'var(--dsw-alias-bg-secondary)',
+  background: '#0f172a',
 }
 
 const CATEGORY_CHOICES: ReadonlyArray<{ value: FeedbackCategory; label: string }> = [
@@ -105,17 +138,17 @@ export function PluginLabButton({
           <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
             <span style={{ display: 'grid', gap: 2 }}>
               <strong>让 Agent 帮你反馈</strong>
-              <small style={{ color: 'var(--dsw-alias-label-tertiary)' }}>只整理插件状态与点选项</small>
+              <small style={{ color: '#94a3b8' }}>只整理插件状态与点选项</small>
             </span>
-            <button type="button" aria-label="关闭插件反馈" style={{ ...triggerStyle, padding: '0 4px' }} onClick={() => { setOpen(false) }}>×</button>
+            <button type="button" aria-label="关闭插件反馈" style={closeButtonStyle} onClick={() => { setOpen(false) }}>×</button>
           </span>
 
-          <span role="status" style={{ display: 'block', marginTop: 8, color: 'var(--dsw-alias-label-secondary)' }}>
+          <span role="status" style={{ display: 'block', marginTop: 8, color: '#cbd5e1' }}>
             {healthBusy ? '正在检查…' : health}
           </span>
 
           {pending === undefined && !view.active && (
-            <span style={{ display: 'block', marginTop: 12, color: 'var(--dsw-alias-label-secondary)' }}>
+            <span style={{ display: 'block', marginTop: 12, color: '#cbd5e1' }}>
               还没有正在试用的插件。开始试用后，反馈会出现在这里。
             </span>
           )}
@@ -123,7 +156,7 @@ export function PluginLabButton({
           {pending === undefined && view.active && selectedVerdict === undefined && (
             <span style={{ display: 'grid', gap: 9, marginTop: 12 }}>
               <strong>这次体验怎么样？</strong>
-              <small style={{ color: 'var(--dsw-alias-label-tertiary)' }}>
+              <small style={{ color: '#94a3b8' }}>
                 Agent 不读取对话来猜测体验，这一项由你选择。
               </small>
               <span style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 7 }}>
@@ -149,7 +182,7 @@ export function PluginLabButton({
                   </button>
                 ))}
               </span>
-              <button type="button" style={{ ...triggerStyle, justifySelf: 'start', padding: 0 }} onClick={() => { setSelectedVerdict(undefined) }}>返回</button>
+              <button type="button" style={{ ...secondaryButtonStyle, justifySelf: 'start' }} onClick={() => { setSelectedVerdict(undefined) }}>返回</button>
             </span>
           )}
 
@@ -157,22 +190,22 @@ export function PluginLabButton({
             <span style={{ display: 'grid', gap: 9, marginTop: 12 }}>
               <span style={previewStyle}>
                 <strong>{pending.phase === 'joined' ? '发送结果' : '发送前预览'}</strong>
-                <span style={{ whiteSpace: 'pre-wrap', color: 'var(--dsw-alias-label-secondary)' }}>
+                <span style={{ whiteSpace: 'pre-wrap', color: '#cbd5e1' }}>
                   {pending.phase === 'saving' ? 'Agent 正在生成固定模板预览…' : pending.phase === 'joining' ? '正在发送你确认的有限字段…' : pending.text}
                 </span>
                 {(pending.phase === 'local' || pending.phase === 'saving') && (
-                  <small style={{ color: 'var(--dsw-alias-label-tertiary)' }}>
+                  <small style={{ color: '#94a3b8' }}>
                     不会附带当前任务、本地对话、Prompt、回复或日志。
                   </small>
                 )}
               </span>
               {pending.phase === 'local' && (
-                <button type="button" disabled={busy} style={{ ...choiceStyle, background: 'var(--dsw-alias-interactive-bg-primary)' }} onClick={() => { void join() }}>
+                <button type="button" disabled={busy} style={confirmStyle} onClick={() => { void join() }}>
                   确认发送这条反馈
                 </button>
               )}
               {(pending.phase === 'joined' || pending.phase === 'error') && (
-                <button type="button" style={choiceStyle} onClick={() => {
+                <button type="button" style={secondaryButtonStyle} onClick={() => {
                   dismiss()
                   setSelectedVerdict(undefined)
                   setOpen(false)
@@ -181,11 +214,11 @@ export function PluginLabButton({
             </span>
           )}
 
-          <span style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--dsw-alias-border-secondary)' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, paddingTop: 10, borderTop: '1px solid #334155' }}>
             <button
               type="button"
               disabled={inboxBusy}
-              style={{ ...triggerStyle, padding: 0 }}
+              style={secondaryButtonStyle}
               onClick={() => {
                 if (inbox !== undefined) return setInbox(undefined)
                 setInboxBusy(true)
@@ -194,10 +227,10 @@ export function PluginLabButton({
             >
               {inboxBusy ? '检查中…' : '查看进展'}
             </button>
-            <small style={{ color: 'var(--dsw-alias-label-tertiary)' }}>不会调用模型读取本地对话</small>
+            <small style={{ color: '#94a3b8' }}>不会调用模型读取本地对话</small>
           </span>
           {inbox !== undefined && (
-            <span style={{ display: 'block', marginTop: 7, color: 'var(--dsw-alias-label-secondary)', whiteSpace: 'pre-wrap' }}>
+            <span style={{ display: 'block', marginTop: 7, color: '#cbd5e1', whiteSpace: 'pre-wrap' }}>
               {inbox}
             </span>
           )}
