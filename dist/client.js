@@ -3824,8 +3824,15 @@ const category = union([
 	literal("result_quality"),
 	literal("general")
 ]);
+const health = union([
+	literal("ok"),
+	literal("unavailable"),
+	literal("error"),
+	literal("unknown")
+]);
 const probeResult = object({
 	active: boolean().readonly(),
+	health: health.readonly(),
 	text: string().readonly()
 });
 const actionResult = object({
@@ -4012,8 +4019,9 @@ var LabController = class {
 		};
 	};
 	setTrialActive(active) {
+		const { health: _health,...view } = this.view;
 		this.publish({
-			...this.view,
+			...view,
 			active
 		});
 	}
@@ -4074,7 +4082,11 @@ var LabController = class {
 	async probe() {
 		const result = await this.call(() => this.remote.probe(this.sessionId));
 		if (!result.ok) return result.text;
-		this.setTrialActive(result.value.active);
+		this.publish({
+			...this.view,
+			active: result.value.active,
+			health: result.value.health
+		});
 		return result.value.text;
 	}
 	dismiss() {
@@ -4119,6 +4131,21 @@ const triggerStyle$1 = {
 	fontSize: 12,
 	fontWeight: 600
 };
+const promptStyle = {
+	display: "flex",
+	alignItems: "center",
+	justifyContent: "space-between",
+	gap: 14,
+	width: "100%",
+	boxSizing: "border-box",
+	padding: "10px 12px",
+	border: "1px solid #475569",
+	borderRadius: 12,
+	background: "#151b23",
+	color: "#f8fafc",
+	boxShadow: "0 6px 20px rgba(0, 0, 0, .24)",
+	fontSize: 13
+};
 const secondaryButtonStyle = {
 	minHeight: 30,
 	padding: "0 10px",
@@ -4140,11 +4167,9 @@ const closeButtonStyle = {
 	lineHeight: 1
 };
 const panelStyle$1 = {
-	position: "absolute",
-	zIndex: 30,
-	left: 0,
-	bottom: 34,
-	width: 314,
+	display: "block",
+	width: "100%",
+	boxSizing: "border-box",
 	padding: 14,
 	border: "1px solid #475569",
 	borderRadius: 12,
@@ -4218,12 +4243,14 @@ function PluginLabButton({ usePluginLab, record, join, dismiss, checkHealth, che
 	const view = usePluginLab((value) => value);
 	const [open, setOpen] = (0, react.useState)(false);
 	const [selectedVerdict, setSelectedVerdict] = (0, react.useState)();
-	const [health, setHealth] = (0, react.useState)("");
+	const [health$1, setHealth] = (0, react.useState)("");
 	const [healthBusy, setHealthBusy] = (0, react.useState)(false);
 	const [inbox, setInbox] = (0, react.useState)();
 	const [inboxBusy, setInboxBusy] = (0, react.useState)(false);
 	const pending = view.pending;
 	const busy = pending?.phase === "saving" || pending?.phase === "joining";
+	const failed = view.health === "error" || view.health === "unavailable";
+	const visible$1 = pending !== void 0 || view.active && failed;
 	const openPanel = () => {
 		if (open) {
 			setOpen(false);
@@ -4235,17 +4262,50 @@ function PluginLabButton({ usePluginLab, record, join, dismiss, checkHealth, che
 			setHealthBusy(false);
 		});
 	};
+	if (!visible$1) return null;
+	const promptTitle = pending !== void 0 ? pending.phase === "joined" ? "反馈已提交" : "有一条反馈等待确认" : view.health === "error" ? "当前插件运行报错" : "当前插件暂不可用";
 	return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
 		style: {
-			position: "relative",
-			display: "inline-flex"
+			display: "block",
+			width: "100%"
 		},
-		children: [/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("button", {
-			type: "button",
-			"aria-label": "让 Agent 帮我反馈",
-			style: triggerStyle$1,
-			onClick: openPanel,
-			children: ["让 Agent 帮我反馈", view.active ? " ·" : ""]
+		children: [!open && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+			role: "status",
+			style: promptStyle,
+			children: [/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+				style: {
+					display: "flex",
+					alignItems: "center",
+					gap: 10,
+					minWidth: 0
+				},
+				children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+					"aria-hidden": "true",
+					style: {
+						width: 8,
+						height: 8,
+						flex: "0 0 auto",
+						borderRadius: 999,
+						background: "#fb7185"
+					}
+				}), /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+					style: {
+						display: "grid",
+						gap: 1,
+						minWidth: 0
+					},
+					children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("strong", { children: promptTitle }), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("small", {
+						style: { color: "#cbd5e1" },
+						children: "只基于 Host 状态，不读取对话或日志"
+					})]
+				})]
+			}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+				type: "button",
+				"aria-label": "让 Agent 帮我反馈",
+				style: triggerStyle$1,
+				onClick: openPanel,
+				children: pending === void 0 ? "让 Agent 帮我反馈" : "查看反馈"
+			})]
 		}), open && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
 			role: "dialog",
 			"aria-label": "让 Agent 帮我反馈",
@@ -4284,15 +4344,7 @@ function PluginLabButton({ usePluginLab, record, join, dismiss, checkHealth, che
 						marginTop: 8,
 						color: "#cbd5e1"
 					},
-					children: healthBusy ? "正在检查…" : health
-				}),
-				pending === void 0 && !view.active && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-					style: {
-						display: "block",
-						marginTop: 12,
-						color: "#cbd5e1"
-					},
-					children: "还没有正在试用的插件。开始试用后，反馈会出现在这里。"
+					children: healthBusy ? "正在检查…" : health$1
 				}),
 				pending === void 0 && view.active && selectedVerdict === void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
 					style: {
@@ -4846,13 +4898,17 @@ function apply(ctx) {
 	};
 	ctx.on("command/executed", (sessionId, name, result) => {
 		if (result.kind !== "success") return;
-		if (name === "omdsh-start" || name === "omdsh-retest") controllerFor(sessionId).setTrialActive(true);
+		if (name === "omdsh-start" || name === "omdsh-retest") {
+			const controller = controllerFor(sessionId);
+			controller.setTrialActive(true);
+			controller.probe();
+		}
 		if (name === "omdsh-result" || name === "omdsh-feedback") controllerFor(sessionId).setTrialActive(false);
 	});
-	ctx.slots.inject("conversation.input.left", () => ctx.slots.register({
-		name: "conversation.input.left",
+	ctx.slots.inject("conversation.input.dock", () => ctx.slots.register({
+		name: "conversation.input.dock",
 		id: "omdsh-plugin-lab",
-		order: 39,
+		order: 15,
 		inject: (sessionId) => {
 			const controller = controllerFor(sessionId);
 			return {

@@ -1,7 +1,7 @@
 import type { ClientRemote } from '@deepseek-ai/dsh-api-remotes/client'
 import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
-import type { ExperienceVerdict, FeedbackCategory } from '../protocol.js'
+import type { ExperienceVerdict, FeedbackCategory, HealthStatus } from '../protocol.js'
 
 /** Silent panel Remote surface. It does not create durable command nodes. */
 export type PluginLabRemote = Pick<ClientRemote['pluginLab'], 'probe' | 'record' | 'join' | 'inbox'>
@@ -15,6 +15,7 @@ export interface PendingResult {
 
 export interface LabView {
   readonly active: boolean
+  readonly health?: HealthStatus
   readonly pending?: PendingResult
 }
 
@@ -37,7 +38,8 @@ export class LabController implements HostObservable<LabView> {
   }
 
   setTrialActive(active: boolean): void {
-    this.publish({ ...this.view, active })
+    const { health: _health, ...view } = this.view
+    this.publish({ ...view, active })
   }
 
   async record(
@@ -88,7 +90,11 @@ export class LabController implements HostObservable<LabView> {
   async probe(): Promise<string> {
     const result = await this.call(() => this.remote.probe(this.sessionId))
     if (!result.ok) return result.text
-    this.setTrialActive(result.value.active)
+    this.publish({
+      ...this.view,
+      active: result.value.active,
+      health: result.value.health,
+    })
     return result.value.text
   }
 

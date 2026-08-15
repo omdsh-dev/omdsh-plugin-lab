@@ -116,6 +116,7 @@ export function apply(ctx, rawConfig) {
         const result = assessment(state === undefined ? 'unknown' : health(ctx, state.plugin));
         return {
             active: state !== undefined,
+            health: result.health,
             text: state === undefined
                 ? '未选择试用插件'
                 : `${state.plugin.moduleName} · ${healthText(result.health)}`,

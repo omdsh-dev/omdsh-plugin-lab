@@ -12,7 +12,7 @@ export interface PluginLabInjected {
   checkInbox: () => Promise<string>
 }
 
-export type PluginLabButtonProps = PropsRuntime<'conversation.input.left'> & InjectFace<PluginLabInjected>
+export type PluginLabButtonProps = PropsRuntime<'conversation.input.dock'> & InjectFace<PluginLabInjected>
 
 const triggerStyle: CSSProperties = {
   minHeight: 30,
@@ -25,6 +25,22 @@ const triggerStyle: CSSProperties = {
   boxShadow: '0 1px 2px rgba(15, 23, 42, .22)',
   fontSize: 12,
   fontWeight: 600,
+}
+
+const promptStyle: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 14,
+  width: '100%',
+  boxSizing: 'border-box',
+  padding: '10px 12px',
+  border: '1px solid #475569',
+  borderRadius: 12,
+  background: '#151b23',
+  color: '#f8fafc',
+  boxShadow: '0 6px 20px rgba(0, 0, 0, .24)',
+  fontSize: 13,
 }
 
 const secondaryButtonStyle: CSSProperties = {
@@ -50,11 +66,9 @@ const closeButtonStyle: CSSProperties = {
 }
 
 const panelStyle: CSSProperties = {
-  position: 'absolute',
-  zIndex: 30,
-  left: 0,
-  bottom: 34,
-  width: 314,
+  display: 'block',
+  width: '100%',
+  boxSizing: 'border-box',
   padding: 14,
   border: '1px solid #475569',
   borderRadius: 12,
@@ -117,6 +131,8 @@ export function PluginLabButton({
   const [inboxBusy, setInboxBusy] = useState(false)
   const pending = view.pending
   const busy = pending?.phase === 'saving' || pending?.phase === 'joining'
+  const failed = view.health === 'error' || view.health === 'unavailable'
+  const visible = pending !== undefined || (view.active && failed)
 
   const openPanel = (): void => {
     if (open) {
@@ -128,11 +144,28 @@ export function PluginLabButton({
     void checkHealth().then(setHealth).finally(() => { setHealthBusy(false) })
   }
 
+  if (!visible) return null
+
+  const promptTitle = pending !== undefined
+    ? pending.phase === 'joined' ? '反馈已提交' : '有一条反馈等待确认'
+    : view.health === 'error' ? '当前插件运行报错' : '当前插件暂不可用'
+
   return (
-    <span style={{ position: 'relative', display: 'inline-flex' }}>
-      <button type="button" aria-label="让 Agent 帮我反馈" style={triggerStyle} onClick={openPanel}>
-        让 Agent 帮我反馈{view.active ? ' ·' : ''}
-      </button>
+    <span style={{ display: 'block', width: '100%' }}>
+      {!open && (
+        <span role="status" style={promptStyle}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+            <span aria-hidden="true" style={{ width: 8, height: 8, flex: '0 0 auto', borderRadius: 999, background: '#fb7185' }} />
+            <span style={{ display: 'grid', gap: 1, minWidth: 0 }}>
+              <strong>{promptTitle}</strong>
+              <small style={{ color: '#cbd5e1' }}>只基于 Host 状态，不读取对话或日志</small>
+            </span>
+          </span>
+          <button type="button" aria-label="让 Agent 帮我反馈" style={triggerStyle} onClick={openPanel}>
+            {pending === undefined ? '让 Agent 帮我反馈' : '查看反馈'}
+          </button>
+        </span>
+      )}
       {open && (
         <span role="dialog" aria-label="让 Agent 帮我反馈" style={panelStyle}>
           <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
@@ -146,12 +179,6 @@ export function PluginLabButton({
           <span role="status" style={{ display: 'block', marginTop: 8, color: '#cbd5e1' }}>
             {healthBusy ? '正在检查…' : health}
           </span>
-
-          {pending === undefined && !view.active && (
-            <span style={{ display: 'block', marginTop: 12, color: '#cbd5e1' }}>
-              还没有正在试用的插件。开始试用后，反馈会出现在这里。
-            </span>
-          )}
 
           {pending === undefined && view.active && selectedVerdict === undefined && (
             <span style={{ display: 'grid', gap: 9, marginTop: 12 }}>

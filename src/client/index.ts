@@ -31,14 +31,18 @@ export function apply(ctx: ClientContext): void {
 
   ctx.on('command/executed', (sessionId, name, result) => {
     if (result.kind !== 'success') return
-    if (name === 'omdsh-start' || name === 'omdsh-retest') controllerFor(sessionId).setTrialActive(true)
+    if (name === 'omdsh-start' || name === 'omdsh-retest') {
+      const controller = controllerFor(sessionId)
+      controller.setTrialActive(true)
+      void controller.probe()
+    }
     if (name === 'omdsh-result' || name === 'omdsh-feedback') controllerFor(sessionId).setTrialActive(false)
   })
 
-  ctx.slots.inject('conversation.input.left', () => ctx.slots.register({
-    name: 'conversation.input.left',
+  ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
+    name: 'conversation.input.dock',
     id: 'omdsh-plugin-lab',
-    order: 39,
+    order: 15,
     inject: (sessionId): PluginLabInjected => {
       const controller = controllerFor(sessionId)
       return {

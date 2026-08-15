@@ -11,5 +11,5 @@ export interface PluginLabInjected {
     checkHealth: () => Promise<string>;
     checkInbox: () => Promise<string>;
 }
-export type PluginLabButtonProps = PropsRuntime<'conversation.input.left'> & InjectFace<PluginLabInjected>;
-export declare function PluginLabButton({ usePluginLab, record, join, dismiss, checkHealth, checkInbox, }: PluginLabButtonProps): import("react").JSX.Element;
+export type PluginLabButtonProps = PropsRuntime<'conversation.input.dock'> & InjectFace<PluginLabInjected>;
+export declare function PluginLabButton({ usePluginLab, record, join, dismiss, checkHealth, checkInbox, }: PluginLabButtonProps): import("react").JSX.Element | null;
