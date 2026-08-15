@@ -4,6 +4,7 @@ import { createAgentAssessmentTool, createAgentPreviewTool } from './agent-tool.
 import { healthText, probeLoaderHealth } from './health.js';
 import { JOIN_USAGE, parseJoinTarget, parseReceiptId, parseResultInput, parseStartInput, RESULT_USAGE, RETEST_USAGE, START_USAGE, } from './input.js';
 import { FEEDBACK_SCHEMA_VERSION, FEEDBACK_CATEGORIES, } from './protocol.js';
+import { PluginLabPanelService } from './panel-service.js';
 import { FeedbackStore } from './storage.js';
 import { fixedSummary, renderUploadPreview } from './summary.js';
 import { ExperienceUploader } from './uploader.js';
@@ -24,6 +25,9 @@ function sessionKey(invocation) {
 function agentSessionKey(agent) {
     return agent === undefined ? undefined : String(agent.session.id);
 }
+function agentKey(agent) {
+    return String(agent.session.id);
+}
 function health(ctx, plugin) {
     return probeLoaderHealth(ctx.get('loader'), plugin.moduleName);
 }
@@ -37,17 +41,16 @@ function assessment(status) {
     };
 }
 function renderReceipt(receipt) {
-    const lines = ['已发送严格最小化反馈。'];
-    if (receipt.caseId !== undefined)
-        lines.push(`问题回执：${receipt.caseId}`);
-    if (receipt.similarReports !== undefined)
-        lines.push(`同类反馈：${receipt.similarReports} 条。`);
-    if (receipt.status !== undefined)
-        lines.push(`状态：${receipt.status}。`);
+    const details = [
+        receipt.similarReports === undefined ? undefined : `同类 ${receipt.similarReports} 条`,
+        receipt.status,
+        receipt.caseId,
+    ].filter((value) => value !== undefined);
+    const lines = [`已提交${details.length === 0 ? '' : ` · ${details.join(' · ')}`}`];
     if (receipt.recommendedVersion !== undefined)
-        lines.push(`建议版本：${receipt.recommendedVersion}。`);
+        lines.push(`建议版本：${receipt.recommendedVersion}`);
     if (receipt.trackingUrl !== undefined)
-        lines.push(`聚合跟踪：${receipt.trackingUrl}`);
+        lines.push(`跟踪：${receipt.trackingUrl}`);
     return lines;
 }
 function validateConfig(config) {
@@ -108,6 +111,90 @@ export function apply(ctx, rawConfig) {
             userConfirmationRequired: true,
         };
     };
+    const panelProbe = (agent) => {
+        const state = trials.get(agentKey(agent));
+        const result = assessment(state === undefined ? 'unknown' : health(ctx, state.plugin));
+        return {
+            active: state !== undefined,
+            text: state === undefined
+                ? '未选择试用插件'
+                : `${state.plugin.moduleName} · ${healthText(result.health)}`,
+        };
+    };
+    const recordFeedback = (agent, verdict, category) => {
+        const key = agentKey(agent);
+        const state = trials.get(key);
+        if (state === undefined)
+            return { ok: false, text: '没有进行中的插件试用。' };
+        const event = {
+            schemaVersion: FEEDBACK_SCHEMA_VERSION,
+            type: 'feedback.signal',
+            eventId: crypto.randomUUID(),
+            plugin: state.plugin,
+            health: health(ctx, state.plugin),
+            experience: verdict,
+            category,
+            source: 'user_confirmed',
+            ...state.retestOfReceiptId === undefined ? {} : { retestOfReceiptId: state.retestOfReceiptId },
+        };
+        store.append({ event, requestedShare: false });
+        trials.delete(key);
+        return { ok: true, text: renderUploadPreview(event).join('\n') };
+    };
+    const joinFeedback = async (eventId) => {
+        if (uploader === undefined) {
+            return { ok: false, text: '结构化分享未启用；当前不会产生反馈网络请求。' };
+        }
+        if (eventId === undefined || store.record(eventId) === undefined) {
+            return { ok: false, text: '找不到这条本地体验记录。请先确认一次结果。' };
+        }
+        const existing = store.latestReceipts().find(receipt => receipt.eventId === eventId);
+        if (existing !== undefined)
+            return { ok: true, text: renderReceipt(existing).join('\n') };
+        store.requestShare(eventId);
+        try {
+            const receipt = (await uploader.flushPending(eventId)).get(eventId);
+            if (receipt === undefined)
+                return { ok: false, text: '反馈服务没有返回回执。' };
+            store.markSeen(receipt);
+            return { ok: true, text: renderReceipt(receipt).join('\n') };
+        }
+        catch {
+            return { ok: true, text: '已加入本地发送队列；网络恢复后只会重试同一份有限字段。' };
+        }
+    };
+    const readInbox = async (markRead) => {
+        if (uploader !== undefined) {
+            try {
+                await uploader.refreshReceipts();
+            }
+            catch {
+                // No logging: network failures remain an unavailable state, not diagnostic data.
+            }
+        }
+        const unread = store.unreadReceipts();
+        if (unread.length === 0)
+            return '暂无新进展';
+        const lines = [`${unread.length} 条新进展`];
+        for (const receipt of unread) {
+            lines.push('', ...renderReceipt(receipt));
+            if (markRead)
+                store.markSeen(receipt);
+        }
+        return lines.join('\n');
+    };
+    new PluginLabPanelService(ctx, {
+        probe: panelProbe,
+        record: recordFeedback,
+        join: async (agent) => {
+            const result = await joinFeedback(store.latestLocalRecord()?.event.eventId);
+            if (result.ok) {
+                await ctx.commands.execute(agent, '/omdsh-history', new AbortController().signal);
+            }
+            return result;
+        },
+        inbox: async () => readInbox(true),
+    });
     // Optional capability: headless command-only tests still work, while a normal
     // rc.6 Agent runtime receives the closed, zero-argument assessment tool.
     ctx.inject(['tools'], toolCtx => {
@@ -126,11 +213,7 @@ export function apply(ctx, rawConfig) {
         trials.set(key, state);
         return {
             kind: 'success',
-            text: [
-                `试用已开始：${input.plugin.moduleName}${input.plugin.version === undefined ? '' : `#${input.plugin.version}`}`,
-                `运行状态：${healthText(health(ctx, input.plugin))}`,
-                '完成后由你选择体验和一个脱敏大类；Agent 只能用有限枚举生成固定模板预览。',
-            ].join('\n'),
+            text: `正在试用：${input.plugin.moduleName}${input.plugin.version === undefined ? '' : `#${input.plugin.version}`} · ${healthText(health(ctx, input.plugin))}`,
         };
     };
     const startTrial = (invocation) => {
@@ -153,24 +236,9 @@ export function apply(ctx, rawConfig) {
         }
     };
     const probe = (invocation) => {
-        const state = trials.get(sessionKey(invocation));
-        const result = assessTrial(sessionKey(invocation));
-        return {
-            kind: 'success',
-            text: state === undefined
-                ? `${healthText(result.health)}：当前没有选中的插件试用。`
-                : [
-                    `插件：${state.plugin.moduleName}`,
-                    `运行状态：${healthText(result.health)}`,
-                    '主观体验：未确认。探活没有读取日志、会话、异常或文件。Agent 可建议大类，但不能提交任务摘要。',
-                ].join('\n'),
-        };
+        return { kind: 'success', text: panelProbe(invocation.agent).text };
     };
     const submitResult = (invocation) => {
-        const key = sessionKey(invocation);
-        const state = trials.get(key);
-        if (state === undefined)
-            return { kind: 'error', text: `没有进行中的插件试用。先运行 ${START_USAGE}` };
         let verdict;
         let category;
         try {
@@ -181,32 +249,12 @@ export function apply(ctx, rawConfig) {
         catch {
             return { kind: 'error', text: RESULT_USAGE };
         }
-        const event = {
-            schemaVersion: FEEDBACK_SCHEMA_VERSION,
-            type: 'feedback.signal',
-            eventId: crypto.randomUUID(),
-            plugin: state.plugin,
-            health: health(ctx, state.plugin),
-            experience: verdict,
-            category,
-            source: 'user_confirmed',
-            ...state.retestOfReceiptId === undefined ? {} : { retestOfReceiptId: state.retestOfReceiptId },
-        };
-        store.append({ event, requestedShare: false });
-        trials.delete(key);
-        return {
-            kind: 'success',
-            text: [
-                ...renderUploadPreview(event),
-                `已只保存到本机：${store.eventsPath}`,
-                '请检查以上预览；只有运行 /omdsh-join latest 才会发送这组有限字段。',
-            ].join('\n'),
-        };
+        const result = recordFeedback(invocation.agent, verdict, category);
+        return result.ok
+            ? { kind: 'success', text: result.text }
+            : { kind: 'error', text: `${result.text} 先运行 ${START_USAGE}` };
     };
     const joinFollowUp = async (invocation) => {
-        if (uploader === undefined) {
-            return { kind: 'error', text: '结构化分享未启用；当前不会产生反馈网络请求。' };
-        }
         let target;
         try {
             target = parseJoinTarget(invocation.rawInput);
@@ -215,43 +263,11 @@ export function apply(ctx, rawConfig) {
             return { kind: 'error', text: JOIN_USAGE };
         }
         const eventId = target === 'latest' ? store.latestLocalRecord()?.event.eventId : target;
-        if (eventId === undefined || store.record(eventId) === undefined) {
-            return { kind: 'error', text: '找不到这条本地体验记录。请先确认一次结果。' };
-        }
-        const existing = store.latestReceipts().find(receipt => receipt.eventId === eventId);
-        if (existing !== undefined)
-            return { kind: 'success', text: renderReceipt(existing).join('\n') };
-        store.requestShare(eventId);
-        try {
-            const receipt = (await uploader.flushPending(eventId)).get(eventId);
-            if (receipt === undefined)
-                return { kind: 'error', text: '反馈服务没有返回回执。' };
-            store.markSeen(receipt);
-            return { kind: 'success', text: renderReceipt(receipt).join('\n') };
-        }
-        catch {
-            return { kind: 'success', text: '已加入本地发送队列；网络恢复后只会重试同一份有限字段。' };
-        }
+        const result = await joinFeedback(eventId);
+        return result.ok ? { kind: 'success', text: result.text } : { kind: 'error', text: result.text };
     };
     const inbox = async (invocation) => {
-        if (uploader !== undefined) {
-            try {
-                await uploader.refreshReceipts();
-            }
-            catch {
-                // No logging: network failures remain an unavailable state, not diagnostic data.
-            }
-        }
-        const unread = store.unreadReceipts();
-        if (unread.length === 0)
-            return { kind: 'success', text: 'Plugin Lab 暂无新的处理进展。' };
-        const lines = [`Plugin Lab 有 ${unread.length} 条新进展：`];
-        for (const receipt of unread) {
-            lines.push('', ...renderReceipt(receipt));
-            if (invocation.rawInput.trim() !== '--peek')
-                store.markSeen(receipt);
-        }
-        return { kind: 'success', text: lines.join('\n') };
+        return { kind: 'success', text: await readInbox(invocation.rawInput.trim() !== '--peek') };
     };
     const status = (invocation) => {
         const state = trials.get(sessionKey(invocation));
@@ -277,6 +293,18 @@ export function apply(ctx, rawConfig) {
             `本地最小化数据：${store.dataDir}`,
         ].join('\n'),
     });
+    const history = () => {
+        const record = store.latestLocalRecord();
+        if (record === undefined)
+            return { kind: 'error', text: '没有可记录的插件反馈。' };
+        const event = record.event;
+        const receipt = store.latestReceipts().find(item => item.eventId === event.eventId);
+        const suffix = receipt?.status === undefined ? '已提交' : `已提交 · ${receipt.status}`;
+        return {
+            kind: 'success',
+            text: `${fixedSummary(event.plugin, event.health, event.experience, event.category)} ${suffix}`,
+        };
+    };
     ctx.commands.register({
         name: 'omdsh-start',
         description: '开始一次单插件试用；不采集会话内容',
@@ -336,6 +364,12 @@ export function apply(ctx, rawConfig) {
         description: '查看零日志数据边界与完整可发送字段',
         recordInput: false,
         handler: privacy,
+    });
+    ctx.commands.register({
+        name: 'omdsh-history',
+        description: '内部：在 Session 历史中保留一条已确认的插件反馈卡片',
+        recordInput: false,
+        handler: history,
     });
     if (uploader !== undefined) {
         const flush = () => {

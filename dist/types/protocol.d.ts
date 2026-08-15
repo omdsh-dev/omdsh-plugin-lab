@@ -4,6 +4,16 @@ export type HealthStatus = 'ok' | 'unavailable' | 'error' | 'unknown';
 export type ExperienceVerdict = 'good' | 'mixed' | 'bad';
 export declare const FEEDBACK_CATEGORIES: readonly ["installation", "startup", "invocation", "compatibility", "reliability", "performance", "result_quality", "general"];
 export type FeedbackCategory = typeof FEEDBACK_CATEGORIES[number];
+/** Silent panel response; unlike slash commands, this is never appended to the Session. */
+export interface PluginLabPanelProbe {
+    readonly active: boolean;
+    readonly text: string;
+}
+/** Closed panel action result with no free-text input or Session event side effect. */
+export interface PluginLabPanelAction {
+    readonly ok: boolean;
+    readonly text: string;
+}
 export interface TrialPluginRef {
     /** Public DSH marketplace/package identifier; never a local path or user label. */
     readonly moduleName: string;

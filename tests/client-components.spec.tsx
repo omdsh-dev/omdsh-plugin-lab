@@ -1,97 +1,87 @@
 // @vitest-environment jsdom
 import { useSyncExternalStore } from 'react'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import type { MessageId } from '@deepseek-ai/dsh-client-connection/client'
-import type { ConversationNode, ConversationSnapshot, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import {
-  ExperienceResultCard, latestAssistantMessageId,
-  type ExperienceResultCardProps,
-} from '../src/client/ExperienceResultCard.js'
-import { InboxButton, type InboxButtonProps } from '../src/client/InboxButton.js'
-import { ProbeButton, type ProbeButtonProps } from '../src/client/ProbeButton.js'
-import { LabController, type CommandsRemote } from '../src/client/controller.js'
+import { PluginLabButton, type PluginLabButtonProps } from '../src/client/PluginLabButton.js'
+import { LabController, type PluginLabRemote } from '../src/client/controller.js'
 
 afterEach(cleanup)
 
-const OLD = 'message-old' as MessageId
-const LATEST = 'message-latest' as MessageId
 const SESSION = 'session' as SessionId
+const success = <T,>(value: T) => Promise.resolve({ ok: true as const, value })
 
-const nodes = [
-  { kind: 'assistant', messageId: OLD },
-  { kind: 'assistant', messageId: LATEST },
-] as ConversationNode[]
-
-function sessionHook<T>(selector: (snapshot: ConversationSnapshot) => T): T {
-  return selector({ nodes } as unknown as ConversationSnapshot)
+function remote(overrides: Partial<PluginLabRemote> = {}): PluginLabRemote {
+  return {
+    probe: async () => success({ active: false, text: '未选择试用插件' }),
+    record: async () => success({ ok: true, text: '待确认' }),
+    join: async () => success({ ok: true, text: '已提交' }),
+    inbox: async () => success('暂无新进展'),
+    ...overrides,
+  } as PluginLabRemote
 }
 
-function propsFor(controller: LabController, messageId: MessageId): ExperienceResultCardProps {
+function propsFor(controller: LabController): PluginLabButtonProps {
   const usePluginLab = <T,>(selector: (view: ReturnType<LabController['getSnapshot']>) => T): T => {
     const view = useSyncExternalStore(controller.subscribe, controller.getSnapshot)
     return selector(view)
   }
   return {
-    messageId,
-    sessionId: SESSION,
-    useSession: sessionHook,
     usePluginLab,
-    record: (id, outcome, category) => controller.record(id, outcome, category),
+    record: (verdict, category) => controller.record(undefined, verdict, category),
     join: () => controller.join(),
     dismiss: () => { controller.dismiss() },
-  } as ExperienceResultCardProps
+    checkHealth: () => controller.probe(),
+    checkInbox: () => controller.inbox(),
+  } as PluginLabButtonProps
 }
 
-describe('rc.6 client components', () => {
-  it('selects the latest durable assistant message from the rc.6 projection', () => {
-    expect(latestAssistantMessageId(nodes)).toBe(LATEST)
-    expect(latestAssistantMessageId([{ kind: 'user' } as ConversationNode])).toBeUndefined()
+describe('rc.6 lightweight client entry', () => {
+  it('shows one entry and probes automatically without a model or command call', async () => {
+    const probe: PluginLabRemote['probe'] = vi.fn(async () => success({ active: false, text: '未选择试用插件' }))
+    render(<PluginLabButton {...propsFor(new LabController(remote({ probe }), SESSION))} />)
+
+    expect(screen.getAllByRole('button')).toHaveLength(1)
+    fireEvent.click(screen.getByRole('button', { name: '插件反馈' }))
+    await screen.findByText('未选择试用插件')
+    expect(probe).toHaveBeenCalledOnce()
+    expect(probe).toHaveBeenLastCalledWith(SESSION)
+    expect(screen.getByText(/还没有正在试用的插件/)).toBeDefined()
   })
 
-  it('renders only on the latest reply and completes local-save then explicit-join clicks', async () => {
-    const execute: CommandsRemote['execute'] = vi.fn(async (_sessionId, line) => ({
-      ok: true as const,
-      value: {
-        commandId: 'command' as never,
-        result: {
-          kind: 'success' as const,
-          text: line.startsWith('/omdsh-result') ? '已只保存在本机' : '问题回执：PL-RC6',
-        },
-      },
+  it('collects experience and category, previews locally, then submits separately', async () => {
+    const probe: PluginLabRemote['probe'] = vi.fn(async () => success({ active: true, text: '@example/plugin · 当前运行 OK' }))
+    const record: PluginLabRemote['record'] = vi.fn(async () => success({
+      ok: true,
+      text: '待确认：稳定性 · 不好用\n不含当前任务、对话或日志；确认提交后才会发送。',
     }))
-    const controller = new LabController({ execute }, SESSION)
+    const join: PluginLabRemote['join'] = vi.fn(async () => success({ ok: true, text: '已提交 · 同类 2 条 · clustered' }))
+    const controller = new LabController(remote({ probe, record, join }), SESSION)
     controller.setTrialActive(true)
-    const rendered = render(<ExperienceResultCard {...propsFor(controller, OLD)} />)
-    expect(screen.queryByRole('button', { name: '体验结果' })).toBeNull()
+    render(<PluginLabButton {...propsFor(controller)} />)
 
-    rendered.rerender(<ExperienceResultCard {...propsFor(controller, LATEST)} />)
-    fireEvent.click(screen.getByRole('button', { name: '体验结果' }))
+    fireEvent.click(screen.getByRole('button', { name: '插件反馈 ·' }))
+    await screen.findByText('@example/plugin · 当前运行 OK')
     fireEvent.click(screen.getByRole('button', { name: '不好用' }))
     fireEvent.click(screen.getByRole('button', { name: '稳定性' }))
-    await screen.findByText('已只保存在本机')
-    expect(execute).toHaveBeenLastCalledWith(SESSION, '/omdsh-result bad reliability')
+    await screen.findByText(/待确认：稳定性/)
+    expect(record).toHaveBeenLastCalledWith(SESSION, 'bad', 'reliability')
 
-    fireEvent.click(screen.getByRole('button', { name: '确认并提交：加入并等待修复' }))
-    await screen.findByText('问题回执：PL-RC6')
-    expect(execute).toHaveBeenLastCalledWith(SESSION, '/omdsh-join latest')
+    fireEvent.click(screen.getByRole('button', { name: '确认提交并等待修复' }))
+    await screen.findByText('已提交 · 同类 2 条 · clustered')
+    expect(join).toHaveBeenLastCalledWith(SESSION)
     expect(screen.getByRole('button', { name: '完成' })).toBeDefined()
   })
 
-  it('opens and closes the in-composer progress inbox', async () => {
-    const checkInbox = vi.fn(async () => 'Plugin Lab 暂无新的处理进展。')
-    render(<InboxButton {...({ checkInbox } as InboxButtonProps)} />)
-    fireEvent.click(screen.getByRole('button', { name: '反馈进展' }))
-    await waitFor(() => { expect(screen.getByRole('status').textContent).toContain('暂无新的处理进展') })
-    fireEvent.click(screen.getByRole('button', { name: '反馈进展' }))
-    expect(screen.queryByRole('status')).toBeNull()
-  })
-
-  it('runs one-click local health without sharing', async () => {
-    const checkHealth = vi.fn(async () => '运行状态：当前运行 OK')
-    render(<ProbeButton {...({ checkHealth } as ProbeButtonProps)} />)
-    fireEvent.click(screen.getByRole('button', { name: '插件探活' }))
-    await waitFor(() => { expect(screen.getByRole('status').textContent).toContain('当前运行 OK') })
-    expect(checkHealth).toHaveBeenCalledOnce()
+  it('keeps progress as a secondary action inside the same panel', async () => {
+    const inbox: PluginLabRemote['inbox'] = vi.fn(async () => success('暂无新进展'))
+    render(<PluginLabButton {...propsFor(new LabController(remote({ inbox }), SESSION))} />)
+    fireEvent.click(screen.getByRole('button', { name: '插件反馈' }))
+    await screen.findByText('未选择试用插件')
+    fireEvent.click(screen.getByRole('button', { name: '查看进展' }))
+    await waitFor(() => { expect(screen.getByText('暂无新进展')).toBeDefined() })
+    expect(inbox).toHaveBeenLastCalledWith(SESSION)
+    expect(screen.queryByRole('button', { name: '插件探活' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '反馈进展' })).toBeNull()
   })
 })

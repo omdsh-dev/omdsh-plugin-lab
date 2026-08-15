@@ -1,15 +1,14 @@
-import type { CommandResult } from '@deepseek-ai/dsh-commands/types'
 import type { ClientRemote } from '@deepseek-ai/dsh-api-remotes/client'
 import type { MessageId } from '@deepseek-ai/dsh-client-connection/client'
 import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ExperienceVerdict, FeedbackCategory } from '../protocol.js'
 
-/** Exact rc.6 generated command Remote surface, kept narrow for testability. */
-export type CommandsRemote = Pick<ClientRemote['commands'], 'execute'>
+/** Silent panel Remote surface. It does not create durable command nodes. */
+export type PluginLabRemote = Pick<ClientRemote['pluginLab'], 'probe' | 'record' | 'join' | 'inbox'>
 
 export interface PendingResult {
-  readonly messageId: MessageId
+  readonly messageId?: MessageId
   readonly verdict: ExperienceVerdict
   readonly category: FeedbackCategory
   readonly phase: 'saving' | 'local' | 'joining' | 'joined' | 'error'
@@ -23,17 +22,12 @@ export interface LabView {
 
 const INITIAL_VIEW: LabView = Object.freeze({ active: false })
 
-function commandText(result: CommandResult | undefined): string {
-  if (result === undefined) return '命令未被 DSH 接收。'
-  return result.text ?? (result.kind === 'success' ? '完成。' : '操作失败。')
-}
-
 export class LabController implements HostObservable<LabView> {
   private view = INITIAL_VIEW
   private readonly listeners = new Set<() => void>()
 
   constructor(
-    private readonly remote: CommandsRemote,
+    private readonly remote: PluginLabRemote,
     private readonly sessionId: SessionId,
   ) {}
 
@@ -48,17 +42,31 @@ export class LabController implements HostObservable<LabView> {
     this.publish({ ...this.view, active })
   }
 
-  async record(messageId: MessageId, verdict: ExperienceVerdict, category: FeedbackCategory): Promise<void> {
-    this.publish({ ...this.view, pending: { messageId, verdict, category, phase: 'saving' } })
-    const settled = await this.execute(`/omdsh-result ${verdict} ${category}`)
-    if (settled.ok) {
+  async record(
+    messageId: MessageId | undefined,
+    verdict: ExperienceVerdict,
+    category: FeedbackCategory,
+  ): Promise<void> {
+    const identity = messageId === undefined ? {} : { messageId }
+    this.publish({ ...this.view, pending: { ...identity, verdict, category, phase: 'saving' } })
+    const settled = await this.call(() => this.remote.record(this.sessionId, verdict, category))
+    if (settled.ok && settled.value.ok) {
       this.publish({
         ...this.view,
         active: false,
-        pending: { messageId, verdict, category, phase: 'local', text: settled.text },
+        pending: { ...identity, verdict, category, phase: 'local', text: settled.value.text },
       })
     } else {
-      this.publish({ ...this.view, pending: { messageId, verdict, category, phase: 'error', text: settled.text } })
+      this.publish({
+        ...this.view,
+        pending: {
+          ...identity,
+          verdict,
+          category,
+          phase: 'error',
+          text: settled.ok ? settled.value.text : settled.text,
+        },
+      })
     }
   }
 
@@ -66,23 +74,27 @@ export class LabController implements HostObservable<LabView> {
     const pending = this.view.pending
     if (pending === undefined || pending.phase !== 'local') return
     this.publish({ ...this.view, pending: { ...pending, phase: 'joining' } })
-    const settled = await this.execute('/omdsh-join latest')
+    const settled = await this.call(() => this.remote.join(this.sessionId))
     this.publish({
       ...this.view,
       pending: {
         ...pending,
-        phase: settled.ok ? 'joined' : 'error',
-        text: settled.text,
+        phase: settled.ok && settled.value.ok ? 'joined' : 'error',
+        text: settled.ok ? settled.value.text : settled.text,
       },
     })
   }
 
   async inbox(): Promise<string> {
-    return (await this.execute('/omdsh-inbox')).text
+    const result = await this.call(() => this.remote.inbox(this.sessionId))
+    return result.ok ? result.value : result.text
   }
 
   async probe(): Promise<string> {
-    return (await this.execute('/omdsh-probe')).text
+    const result = await this.call(() => this.remote.probe(this.sessionId))
+    if (!result.ok) return result.text
+    this.setTrialActive(result.value.active)
+    return result.value.text
   }
 
   dismiss(): void {
@@ -90,12 +102,14 @@ export class LabController implements HostObservable<LabView> {
     this.publish(view)
   }
 
-  private async execute(line: string): Promise<{ ok: boolean; text: string }> {
+  private async call<T>(task: () => Promise<{ readonly ok: true; readonly value: T } | {
+    readonly ok: false
+    readonly error: { readonly message: string; readonly code: string }
+  }>): Promise<{ ok: true; value: T } | { ok: false; text: string }> {
     try {
-      const result = await this.remote.execute(this.sessionId, line)
+      const result = await task()
       if (!result.ok) return { ok: false, text: `${result.error.message} (${result.error.code})` }
-      const command = result.value?.result
-      return { ok: command?.kind === 'success', text: commandText(command) }
+      return { ok: true, value: result.value }
     } catch (error: unknown) {
       return { ok: false, text: error instanceof Error ? error.message : String(error) }
     }
