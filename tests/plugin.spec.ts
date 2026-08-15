@@ -8,6 +8,7 @@ import CommandRuntime from '@deepseek-ai/dsh-commands'
 import SessionStore from '@deepseek-ai/dsh-session'
 import { describe, expect, it } from 'vitest'
 import plugin from '../src/index.js'
+import type { PluginLabPanelService } from '../src/panel-service.js'
 
 async function runtime(config: Parameters<typeof plugin.apply>[1]) {
   const ctx = new Context()
@@ -35,12 +36,13 @@ describe('DSH strict feedback integration', () => {
     await ctx.commands.execute(agent, '/omdsh-start @example/plugin#1.0.0', signal)
     const health = await ctx.commands.execute(agent, '/omdsh-probe', signal)
     expect(health?.result.text).toContain('暂时无法判断')
-    expect(health?.result.text).toContain('没有读取日志')
+    expect(health?.result.text).toBe('@example/plugin · 暂时无法判断')
 
     const feedback = await ctx.commands.execute(agent, '/omdsh-result bad reliability', signal)
-    expect(feedback?.result.text).toContain('不好用（由你确认）')
-    expect(feedback?.result.text).toContain('不会上传：当前任务')
-    expect(feedback?.result.text).toContain('稳定性（reliability）')
+    expect(feedback?.result.text).toContain('稳定性')
+    expect(feedback?.result.text).toContain('不好用')
+    expect(feedback?.result.text).toContain('不含当前任务、对话或日志')
+    expect(feedback?.result.text).not.toContain(dataDir)
     const stored = JSON.parse(readFileSync(join(dataDir, 'feedback-v3.ndjson'), 'utf8').trim())
     expect(stored).toEqual({
       event: {
@@ -73,7 +75,7 @@ describe('DSH strict feedback integration', () => {
     })
     await ctx.commands.execute(agent, '/omdsh-start plugin', signal)
     const feedback = await ctx.commands.execute(agent, '/omdsh-result good general', signal)
-    expect(feedback?.result.text).toContain('已只保存到本机')
+    expect(feedback?.result.text).toContain('确认提交后才会发送')
     await fiber.dispose()
   })
 
@@ -100,11 +102,17 @@ describe('DSH strict feedback integration', () => {
       retryIntervalMs: 60_000,
     })
     await ctx.commands.execute(agent, '/omdsh-start plugin#1.0.0', signal)
-    await ctx.commands.execute(agent, '/omdsh-result mixed compatibility', signal)
+    const panel = ctx.get('pluginLab') as PluginLabPanelService
+    const commandRowsBefore = agent.session.events.filter(event => event.type === 'command/run').length
+    expect(panel.record(agent, 'mixed', 'compatibility')).toMatchObject({ ok: true })
+    expect(agent.session.events.filter(event => event.type === 'command/run')).toHaveLength(commandRowsBefore)
     expect(posts).toBe(0)
-    const joined = await ctx.commands.execute(agent, '/omdsh-join latest', signal)
-    expect(joined?.result.text).toContain('PL-STRICT')
+    const joined = await panel.join(agent)
+    expect(joined.text).toContain('PL-STRICT')
     expect(posts).toBe(1)
+    const commandRows = agent.session.events.filter(event => event.type === 'command/run')
+    expect(commandRows).toHaveLength(commandRowsBefore + 1)
+    expect(commandRows.at(-1)?.data).toMatchObject({ name: 'omdsh-history' })
     const packet = JSON.parse(body) as Record<string, unknown>
     expect(Object.keys(packet).sort()).toEqual([
       'category', 'eventId', 'experience', 'health', 'plugin', 'schemaVersion', 'source', 'type',

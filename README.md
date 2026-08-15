@@ -1,16 +1,17 @@
 # Oh My DSH Plugin Lab
 
-Plugin Lab 0.4 是面向 DeepSeek Harness rc.6 的隐私优先插件反馈闭环：Agent 可以探活并准备脱敏大类摘要，用户在上传前看到完整预览并逐次确认，后端只把达到阈值的聚合信号提交到 GitHub。
+Plugin Lab 0.4 是面向 DeepSeek Harness rc.6 的隐私优先插件反馈闭环。普通用户只看到一个“插件反馈”入口，不需要模型 API，也不需要记住命令；后端只把达到阈值的聚合信号提交到 GitHub。
 
 ## 现在的体验
 
-1. `/omdsh-start <plugin>#<version>` 选择公开的插件坐标。
-2. 用户或 Agent 运行探活，只得到 `ok / unavailable / error / unknown`。
-3. Agent 可以建议“安装、启动、调用、兼容性、稳定性、性能、结果质量、整体体验”之一，但反馈工具不接受任务文本。
-4. 用户选择“好用 / 一般 / 不好用”和一个大类。
-5. Plugin Lab 在本地生成固定模板，并展示即将上传的全部可读信息；此时没有网络请求。
-6. 用户点击“确认并提交”或运行 `/omdsh-join latest` 后，有限枚举包才会发送。
-7. 后端按插件、版本、状态、体验和大类聚合；同类报告达到阈值后创建 GitHub Issue，并通过回执邀请复测。
+1. 从插件市场开始一次试用；在当前 rc.6 开发接入中也可用 `/omdsh-start <plugin>#<version>` 关联目标。
+2. 点击输入框旁唯一的“插件反馈”，面板自动显示 `ok / unavailable / error / unknown`，不调用模型。
+3. 用户选择“好用 / 一般 / 不好用”和一个有限大类。
+4. 面板显示两行脱敏预览；此时只保存到本机，没有网络请求。
+5. 用户再次点击“确认提交”后，有限枚举包才会发送；Session 历史只新增一条独立的“插件反馈”卡片。
+6. 探活、选择和预览等中间操作不进入历史；“查看进展”收在同一面板内。后端聚合到阈值后创建 GitHub Issue，并通过回执邀请复测。
+
+Agent 分析是可选能力，只能建议有限大类，不能读取或提交任务摘要。没有模型 API Key 时，上述完整主流程照常可用。
 
 ```mermaid
 flowchart LR
@@ -31,15 +32,17 @@ Agent 可能已经拥有当前任务的正常会话上下文，但 Plugin Lab �
 ```sh
 pnpm install
 pnpm pack:release
-dsh plugin --profile web add ./oh-my-dsh-plugin-lab-0.4.0.tgz
+dsh plugin --profile web add ./oh-my-dsh-plugin-lab-0.4.2.tgz
 dsh --profile web
 ```
 
-Plugin Lab 是标准 DSH Bundle：`package.json` 通过 `dsh.bundle.patch` 声明 Host 插件，通过 `dsh.client` 提供 Web 探活、结果卡和收件箱。
+Plugin Lab 是标准 DSH Bundle：`package.json` 通过 `dsh.bundle.patch` 声明 Host 插件，通过 `dsh.client` 提供唯一的 Web“插件反馈”入口。探活、体验选择、脱敏预览、确认提交和进展都在这个入口中完成。
 
-版本 `0.4.0` 的 Peer 契约从 DSH `0.1.0-rc.6` 起。完整测试会执行真实的 rc.6 打包、安装、Host/Web 启动、Client Loader 注册和卸载。
+版本 `0.4.2` 的 Peer 契约从 DSH `0.1.0-rc.6` 起。完整测试会执行真实的 rc.6 打包、安装、Host/Web 启动、Client Loader 注册和卸载。
 
-## 命令与 Agent 工具
+## 兼容命令与 Agent 工具
+
+这些接口用于市场接入、自动化和排障；普通用户不需要逐个运行。命令默认只返回一到两行，完整数据边界集中在 `/omdsh-privacy`。
 
 | 接口 | 作用 |
 |---|---|

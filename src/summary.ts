@@ -47,15 +47,7 @@ export function fixedSummary(
 /** Every readable preview line is derived from the exact closed upload packet. */
 export function renderUploadPreview(event: FeedbackEventV3): string[] {
   return [
-    '待确认的脱敏摘要（尚未发送）：',
-    `摘要：${fixedSummary(event.plugin, event.health, event.experience, event.category)}`,
-    `插件：${event.plugin.moduleName}`,
-    `版本：${event.plugin.version ?? '未提供'}`,
-    `运行状态：${HEALTH_TEXT[event.health]}`,
-    `体验大类：${CATEGORY_TEXT[event.category]}（${event.category}）`,
-    `主观体验：${VERDICT_TEXT[event.experience]}（由你确认）`,
-    `单次报告 ID：${event.eventId}`,
-    ...event.retestOfReceiptId === undefined ? [] : [`复测回执 ID：${event.retestOfReceiptId}`],
-    '不会上传：当前任务、对话、Prompt、回复、日志、报错详情、堆栈、文件、路径、环境或身份信息。',
+    `待确认：${fixedSummary(event.plugin, event.health, event.experience, event.category)}`,
+    '不含当前任务、对话或日志；确认提交后才会发送。',
   ]
 }

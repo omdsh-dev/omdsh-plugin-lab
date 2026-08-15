@@ -3,10 +3,10 @@ import type { MessageId } from '@deepseek-ai/dsh-client-connection/client';
 import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client';
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots';
 import type { ExperienceVerdict, FeedbackCategory } from '../protocol.js';
-/** Exact rc.6 generated command Remote surface, kept narrow for testability. */
-export type CommandsRemote = Pick<ClientRemote['commands'], 'execute'>;
+/** Silent panel Remote surface. It does not create durable command nodes. */
+export type PluginLabRemote = Pick<ClientRemote['pluginLab'], 'probe' | 'record' | 'join' | 'inbox'>;
 export interface PendingResult {
-    readonly messageId: MessageId;
+    readonly messageId?: MessageId;
     readonly verdict: ExperienceVerdict;
     readonly category: FeedbackCategory;
     readonly phase: 'saving' | 'local' | 'joining' | 'joined' | 'error';
@@ -21,15 +21,15 @@ export declare class LabController implements HostObservable<LabView> {
     private readonly sessionId;
     private view;
     private readonly listeners;
-    constructor(remote: CommandsRemote, sessionId: SessionId);
+    constructor(remote: PluginLabRemote, sessionId: SessionId);
     getSnapshot: () => LabView;
     subscribe: (listener: () => void) => (() => void);
     setTrialActive(active: boolean): void;
-    record(messageId: MessageId, verdict: ExperienceVerdict, category: FeedbackCategory): Promise<void>;
+    record(messageId: MessageId | undefined, verdict: ExperienceVerdict, category: FeedbackCategory): Promise<void>;
     join(): Promise<void>;
     inbox(): Promise<string>;
     probe(): Promise<string>;
     dismiss(): void;
-    private execute;
+    private call;
     private publish;
 }
