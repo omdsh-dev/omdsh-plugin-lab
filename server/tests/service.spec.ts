@@ -19,7 +19,7 @@ function event(participantId = crypto.randomUUID(), eventId = crypto.randomUUID(
     },
     signals: {
       loaderHealth: 'active', assistantMessages: 1, turnsStarted: 1, turnsCompleted: 1,
-      toolCalls: 1, toolErrors: 1, agentErrors: 0,
+      toolCalls: 1, toolErrors: 1, agentErrors: 0, processCrashes: 0, crashes: [],
     },
     feedback: { outcome, retention: outcome === 'worked' ? 'keep' : 'remove' },
     sharing: { transcript: 'none', noteIncluded: false },
@@ -71,8 +71,38 @@ describe('feedback flywheel service', () => {
       eventId: crypto.randomUUID(), participantId: crypto.randomUUID(), occurredAt: 1, trialId: 'trial',
       pluginModule: 'plugin', pluginVersion: '1', taskId: 'search', dshVersion: 'dsh',
       outcome: 'failed' as const, retention: 'remove' as const, loaderHealth: 'active',
-      assistantMessages: 1, toolErrors: 1, agentErrors: 0, durationMs: 1,
+      assistantMessages: 1, toolErrors: 1, agentErrors: 0, processCrashes: 0, crashes: [], durationMs: 1,
     }
     expect(clusterKey({ ...accepted, taskId: 'other' })).not.toBe(clusterKey(accepted))
+  })
+
+  it('clusters a shared crash by its sanitized signature and rejects absolute paths', async () => {
+    const repository = new MemoryRepository()
+    const api = service(repository)
+    const crashed = event()
+    Object.assign(crashed.signals, {
+      processCrashes: 1,
+      crashes: [{
+        fingerprint: '0123456789abcdef0123', name: 'TypeError', code: 'ERR_STATE',
+        origin: 'uncaughtException', frame: 'node_modules/@example/search/dist/index.js:10:2',
+      }],
+    })
+    const receipt = await api.ingest(crashed)
+    await expect(repository.receipt(receipt.receiptId)).resolves.toMatchObject({
+      cluster: { symptom: 'runtime-crash:TypeError:ERR_STATE:node_modules/@example/search/dist/index.js:10:2:0123456789abcdef0123' },
+    })
+
+    const unsafe = event()
+    Object.assign(unsafe.signals, {
+      processCrashes: 1,
+      crashes: [{
+        fingerprint: '0123456789abcdef0123', name: 'Error', origin: 'uncaughtException',
+        frame: '/Users/private/project/index.js:1:2',
+      }],
+    })
+    await expect(api.ingest(unsafe)).rejects.toThrow('must not contain an unsafe path')
+
+    unsafe.signals.crashes[0].frame = 'node_modules/../../Users/private/index.js:1:2'
+    await expect(api.ingest(unsafe)).rejects.toThrow('must not contain an unsafe path')
   })
 })

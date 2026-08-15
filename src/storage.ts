@@ -2,7 +2,7 @@ import { appendFileSync, chmodSync, mkdirSync, readFileSync, writeFileSync } fro
 import { homedir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
 import type {
-  IngestReceipt, LocalExperienceRecord, ReceiptSeen, ShareRequest,
+  IngestReceipt, LocalCrashRecord, LocalExperienceRecord, ReceiptSeen, ShareRequest,
 } from './protocol.js'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu
@@ -40,6 +40,7 @@ export function defaultDataDir(): string {
 export class ExperienceStore {
   readonly dataDir: string
   readonly eventsPath: string
+  readonly crashesPath: string
   readonly receiptsPath: string
   readonly shareRequestsPath: string
   readonly receiptSeenPath: string
@@ -49,6 +50,7 @@ export class ExperienceStore {
     if (!isAbsolute(dataDir)) throw new TypeError('plugin-lab: dataDir must be an absolute path')
     this.dataDir = dataDir
     this.eventsPath = join(dataDir, 'events.ndjson')
+    this.crashesPath = join(dataDir, 'crashes.ndjson')
     this.receiptsPath = join(dataDir, 'receipts.ndjson')
     this.shareRequestsPath = join(dataDir, 'share-requests.ndjson')
     this.receiptSeenPath = join(dataDir, 'receipt-seen.ndjson')
@@ -76,6 +78,16 @@ export class ExperienceStore {
 
   append(record: LocalExperienceRecord): void {
     appendJson(this.eventsPath, record)
+  }
+
+  /** This deliberately uses synchronous append: the process may exit immediately afterward. */
+  appendCrash(record: LocalCrashRecord): void {
+    appendJson(this.crashesPath, record)
+  }
+
+  crashRecords(trialId?: string): LocalCrashRecord[] {
+    const records = readLines<LocalCrashRecord>(this.crashesPath)
+    return trialId === undefined ? records : records.filter(record => record.trialId === trialId)
   }
 
   appendReceipt(receipt: IngestReceipt): void {

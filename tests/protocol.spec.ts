@@ -30,6 +30,7 @@ function event(): ExperienceEventV1 {
       toolCalls: 2,
       toolErrors: 0,
       agentErrors: 0,
+      processCrashes: 0,
       firstReplyMs: 100,
     },
     feedback: { outcome: 'worked', retention: 'keep', note: 'local note' },

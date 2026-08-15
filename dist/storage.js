@@ -36,6 +36,7 @@ export function defaultDataDir() {
 export class ExperienceStore {
     dataDir;
     eventsPath;
+    crashesPath;
     receiptsPath;
     shareRequestsPath;
     receiptSeenPath;
@@ -45,6 +46,7 @@ export class ExperienceStore {
             throw new TypeError('plugin-lab: dataDir must be an absolute path');
         this.dataDir = dataDir;
         this.eventsPath = join(dataDir, 'events.ndjson');
+        this.crashesPath = join(dataDir, 'crashes.ndjson');
         this.receiptsPath = join(dataDir, 'receipts.ndjson');
         this.shareRequestsPath = join(dataDir, 'share-requests.ndjson');
         this.receiptSeenPath = join(dataDir, 'receipt-seen.ndjson');
@@ -72,6 +74,14 @@ export class ExperienceStore {
     }
     append(record) {
         appendJson(this.eventsPath, record);
+    }
+    /** This deliberately uses synchronous append: the process may exit immediately afterward. */
+    appendCrash(record) {
+        appendJson(this.crashesPath, record);
+    }
+    crashRecords(trialId) {
+        const records = readLines(this.crashesPath);
+        return trialId === undefined ? records : records.filter(record => record.trialId === trialId);
     }
     appendReceipt(receipt) {
         appendJson(this.receiptsPath, receipt);

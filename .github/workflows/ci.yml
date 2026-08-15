@@ -26,3 +26,4 @@ jobs:
       - run: pnpm server:test
       - run: pnpm server:build
       - run: pnpm build
+      - run: pnpm test:plugin

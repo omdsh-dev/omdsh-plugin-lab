@@ -1,5 +1,5 @@
 import { createServer } from 'node:http'
-import { mkdtempSync, readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -26,7 +26,7 @@ function record(shareNote = false): LocalExperienceRecord {
     },
     signals: {
       loaderHealth: 'active', assistantMessages: 1, turnsStarted: 1, turnsCompleted: 1,
-      toolCalls: 0, toolErrors: 0, agentErrors: 0,
+      toolCalls: 0, toolErrors: 0, agentErrors: 0, processCrashes: 0,
     },
     feedback: { outcome: 'worked', retention: 'keep', note: 'private' },
     sharing: { transcript: 'none', noteIncluded: shareNote },
@@ -41,6 +41,13 @@ describe('local outbox and uploader', () => {
     const first = store.participantId()
     expect(store.participantId()).toBe(first)
     expect(store.resetParticipantId()).not.toBe(first)
+    const crash = {
+      crashId: crypto.randomUUID(), trialId: 'trial', occurredAt: Date.now(),
+      crash: { fingerprint: '1234567890abcdef1234', name: 'TypeError', origin: 'uncaughtException' as const },
+    }
+    store.appendCrash(crash)
+    expect(store.crashRecords('trial')).toEqual([crash])
+    expect(statSync(store.crashesPath).mode & 0o777).toBe(0o600)
   })
 
   it('posts a narrow payload, persists the receipt, and clears pending state', async () => {

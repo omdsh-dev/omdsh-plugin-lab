@@ -9,6 +9,14 @@ export type ClusterStatus =
   | 'verified'
   | 'closed'
 
+export interface RuntimeCrashSignal {
+  readonly fingerprint: string
+  readonly name: string
+  readonly origin: 'uncaughtException' | 'unhandledRejection'
+  readonly code?: string
+  readonly frame?: string
+}
+
 export interface AcceptedEvent {
   readonly eventId: string
   readonly participantId: string
@@ -25,6 +33,8 @@ export interface AcceptedEvent {
   readonly assistantMessages: number
   readonly toolErrors: number
   readonly agentErrors: number
+  readonly processCrashes: number
+  readonly crashes: readonly RuntimeCrashSignal[]
   readonly durationMs: number
   readonly firstReplyMs?: number
   readonly note?: string

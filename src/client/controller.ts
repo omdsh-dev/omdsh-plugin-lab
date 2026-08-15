@@ -1,20 +1,12 @@
 import type { CommandResult } from '@deepseek-ai/dsh-commands/types'
+import type { ClientRemote } from '@deepseek-ai/dsh-api-remotes/client'
 import type { MessageId } from '@deepseek-ai/dsh-client-connection/client'
 import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import type { TrialOutcome } from '../protocol.js'
 
-interface RemoteFailure {
-  readonly code: string
-  readonly message: string
-}
-
-export interface CommandsRemote {
-  execute: (sessionId: SessionId, line: string) => Promise<
-    | { readonly ok: true; readonly value?: { readonly result: CommandResult } }
-    | { readonly ok: false; readonly error: RemoteFailure }
-  >
-}
+/** Exact rc.6 generated command Remote surface, kept narrow for testability. */
+export type CommandsRemote = Pick<ClientRemote['commands'], 'execute'>
 
 export interface PendingResult {
   readonly messageId: MessageId
@@ -25,7 +17,6 @@ export interface PendingResult {
 
 export interface LabView {
   readonly active: boolean
-  readonly latestMessageId?: MessageId
   readonly pending?: PendingResult
 }
 
@@ -39,8 +30,6 @@ function commandText(result: CommandResult | undefined): string {
 export class LabController implements HostObservable<LabView> {
   private view = INITIAL_VIEW
   private readonly listeners = new Set<() => void>()
-  private readonly mounted = new Map<MessageId, number>()
-  private mountOrder = 0
 
   constructor(
     private readonly remote: CommandsRemote,
@@ -56,15 +45,6 @@ export class LabController implements HostObservable<LabView> {
 
   setTrialActive(active: boolean): void {
     this.publish({ ...this.view, active })
-  }
-
-  observe(messageId: MessageId): () => void {
-    this.mounted.set(messageId, ++this.mountOrder)
-    this.publishLatest()
-    return () => {
-      this.mounted.delete(messageId)
-      this.publishLatest()
-    }
   }
 
   async record(messageId: MessageId, outcome: TrialOutcome): Promise<void> {
@@ -114,15 +94,6 @@ export class LabController implements HostObservable<LabView> {
     } catch (error: unknown) {
       return { ok: false, text: error instanceof Error ? error.message : String(error) }
     }
-  }
-
-  private publishLatest(): void {
-    let latest: [MessageId, number] | undefined
-    for (const row of this.mounted) {
-      if (latest === undefined || row[1] > latest[1]) latest = row
-    }
-    const { latestMessageId: _latestMessageId, ...view } = this.view
-    this.publish(latest === undefined ? view : { ...view, latestMessageId: latest[0] })
   }
 
   private publish(view: LabView): void {

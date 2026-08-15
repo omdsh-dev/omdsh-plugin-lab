@@ -21,6 +21,7 @@ function event(loaderHealth: ExperienceEventV1['signals']['loaderHealth']): Expe
       toolCalls: 0,
       toolErrors: 0,
       agentErrors: 0,
+      processCrashes: 0,
     },
     feedback: { outcome: 'failed', retention: 'remove' },
     sharing: { transcript: 'none', noteIncluded: false },

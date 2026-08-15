@@ -19,6 +19,23 @@ export interface TrialPluginRef {
   readonly version?: string
 }
 
+/** Privacy-preserving process crash evidence; no raw message, stack, or absolute path. */
+export interface RuntimeCrashSignal {
+  readonly fingerprint: string
+  readonly name: string
+  readonly origin: 'uncaughtException' | 'unhandledRejection'
+  readonly code?: string
+  readonly frame?: string
+}
+
+/** Synchronously persisted local crash journal entry. It is merged into a Trial after restart. */
+export interface LocalCrashRecord {
+  readonly crashId: string
+  readonly trialId: string
+  readonly occurredAt: number
+  readonly crash: RuntimeCrashSignal
+}
+
 export interface TrialMetrics {
   readonly assistantMessages: number
   readonly turnsStarted: number
@@ -26,6 +43,8 @@ export interface TrialMetrics {
   readonly toolCalls: number
   readonly toolErrors: number
   readonly agentErrors: number
+  readonly processCrashes: number
+  readonly crashes?: readonly RuntimeCrashSignal[]
   readonly firstReplyMs?: number
   readonly lastTurnReason?: string
 }

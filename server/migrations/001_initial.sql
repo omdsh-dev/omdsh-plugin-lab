@@ -28,6 +28,8 @@ CREATE TABLE IF NOT EXISTS experience_events (
   assistant_messages integer NOT NULL,
   tool_errors integer NOT NULL,
   agent_errors integer NOT NULL,
+  process_crashes integer NOT NULL DEFAULT 0,
+  crash_signatures jsonb NOT NULL DEFAULT '[]'::jsonb,
   duration_ms bigint NOT NULL,
   first_reply_ms bigint,
   note text,

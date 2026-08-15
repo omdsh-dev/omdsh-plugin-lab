@@ -24,6 +24,12 @@ export function diagnoseExperience(event, outcome, retention) {
     if (event.signals.agentErrors > 0) {
         actions.push(`记录到 ${event.signals.agentErrors} 次 Agent 运行错误，建议先排除框架或模型侧异常。`);
     }
+    if (event.signals.processCrashes > 0) {
+        const signature = event.signals.crashes?.[0];
+        actions.push(signature === undefined
+            ? `记录到 ${event.signals.processCrashes} 次进程崩溃。`
+            : `记录到 ${event.signals.processCrashes} 次进程崩溃；脱敏指纹 ${signature.fingerprint}，首帧 ${signature.frame ?? 'unknown'}。`);
+    }
     if (outcome === 'worked' && retention === 'keep') {
         return {
             headline: '这次试用形成了明确的正向保留信号。',

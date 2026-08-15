@@ -7,5 +7,5 @@
     "types": ["node", "vitest/globals"]
   },
   "include": ["src/**/*.ts", "tests/**/*.ts"],
-  "exclude": ["src/client/**"]
+  "exclude": ["src/client/**", "tests/client-*.spec.ts", "tests/client-*.spec.tsx"]
 }

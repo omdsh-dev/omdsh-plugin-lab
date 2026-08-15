@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import type { Pool as PgPool } from 'pg'
 import { newDb } from 'pg-mem'
@@ -11,14 +11,21 @@ function accepted(eventId = crypto.randomUUID(), participant = 'participant'): A
     eventId, participantId: crypto.randomUUID(), occurredAt: Date.now(), trialId: crypto.randomUUID(),
     pluginModule: '@example/search', pluginVersion: '1.0.0', taskId: 'repo-search',
     dshVersion: '0.1.0-rc.6', outcome: 'failed', retention: 'remove', loaderHealth: 'active',
-    assistantMessages: 1, toolErrors: 1, agentErrors: 0, durationMs: 100, note: participant,
+    assistantMessages: 1, toolErrors: 1, agentErrors: 0, processCrashes: 1,
+    crashes: [{
+      fingerprint: '0123456789abcdef0123', name: 'TypeError', origin: 'uncaughtException',
+      frame: 'node_modules/@example/search/dist/index.js:10:2',
+    }],
+    durationMs: 100, note: participant,
   }
 }
 
 describe('PostgreSQL repository', () => {
   it('runs the migration and persists the idempotent receipt lifecycle', async () => {
     const database = newDb()
-    database.public.none(readFileSync(resolve('server/migrations/001_initial.sql'), 'utf8'))
+    for (const file of readdirSync(resolve('server/migrations')).filter(file => file.endsWith('.sql')).sort()) {
+      database.public.none(readFileSync(resolve('server/migrations', file), 'utf8'))
+    }
     const adapter = database.adapters.createPg()
     const pool = new adapter.Pool() as unknown as PgPool
     const repository = new PostgresRepository(pool)

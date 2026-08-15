@@ -24,6 +24,9 @@ const env = {
   NO_COLOR: '1',
 }
 
+if (run(dsh, ['--version'], project, env) !== '0.1.0-rc.6') {
+  throw new Error('plugin e2e must run against DSH 0.1.0-rc.6')
+}
 run(dsh, ['plugin', '--profile', profile, 'add', tarball], project, env)
 const profileManifest = JSON.parse(readFileSync(join(dshHome, 'profiles', profile, 'package.json'), 'utf8'))
 if (profileManifest.dependencies?.['@oh-my-dsh/plugin-lab'] === undefined) {
@@ -45,7 +48,7 @@ const dumped = run(dsh, ['--profile', profile, '--dump-config'], project, env)
 if (!dumped.includes('omdsh-plugin-lab') || !dumped.includes('@oh-my-dsh/plugin-lab')) {
   throw new Error(`dumped config does not contain Plugin Lab\n${dumped}`)
 }
-await bootAndInterrupt(dsh, project, profile, env)
+await bootAndInspect(dsh, project, profile, env)
 run(dsh, ['plugin', '--profile', profile, 'remove', '@oh-my-dsh/plugin-lab'], project, env)
 const removedManifest = JSON.parse(readFileSync(join(dshHome, 'profiles', profile, 'package.json'), 'utf8'))
 if (removedManifest.dsh?.profile?.bundles?.includes('@oh-my-dsh/plugin-lab')) {
@@ -91,19 +94,54 @@ function run(command, args, cwd, commandEnv = process.env) {
   return result.stdout.trim()
 }
 
-async function bootAndInterrupt(command, cwd, profileName, commandEnv) {
-  const child = spawn(command, ['--profile', profileName], {
+async function bootAndInspect(command, cwd, profileName, commandEnv) {
+  const child = spawn(command, ['--profile', profileName, '--port', '0'], {
     cwd,
     env: commandEnv,
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   let output = ''
-  child.stdout.on('data', chunk => { output += chunk })
-  child.stderr.on('data', chunk => { output += chunk })
-  await new Promise(resolve => setTimeout(resolve, 2_000))
-  if (child.exitCode !== null) {
-    throw new Error(`DSH profile exited before the smoke window (${child.exitCode})\n${output}`)
+  const url = await new Promise((resolveUrl, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`DSH Web did not publish a listening URL\n${output}`))
+    }, 15_000)
+    const capture = (chunk) => {
+      output += chunk
+      const matched = output.match(/dsh web: (http:\/\/[^\s]+)/u)
+      if (matched?.[1] !== undefined) {
+        clearTimeout(timer)
+        resolveUrl(matched[1])
+      }
+    }
+    child.stdout.on('data', capture)
+    child.stderr.on('data', capture)
+    child.once('exit', (code) => {
+      clearTimeout(timer)
+      reject(new Error(`DSH profile exited before listening (${code})\n${output}`))
+    })
+  })
+  try {
+    const home = await fetch(url)
+    if (!home.ok) throw new Error(`DSH Web homepage returned HTTP ${home.status}`)
+    const html = await home.text()
+    const escapedId = '@oh-my-dsh/plugin-lab'.replaceAll('/', '\\/')
+    const entry = html.match(new RegExp(`"id":"${escapedId}","url":"([^"]+)"`, 'u'))
+    if (entry?.[1] === undefined) {
+      throw new Error(`DSH Web boot manifest omitted @oh-my-dsh/plugin-lab\n${html.slice(0, 2_000)}`)
+    }
+    const client = await fetch(new URL(entry[1], url))
+    if (!client.ok) throw new Error(`DSH Web client artifact returned HTTP ${client.status}`)
+    const source = await client.text()
+    if (!source.startsWith('window.__ModuleLoader__.load({ id: "@oh-my-dsh/plugin-lab"')) {
+      throw new Error('served client artifact does not use the rc.6 module loader protocol')
+    }
+  } finally {
+    await interrupt(child, output)
   }
+}
+
+async function interrupt(child, output) {
+  if (child.exitCode !== null) return
   child.kill('SIGINT')
   const exit = await Promise.race([
     new Promise(resolve => child.once('exit', (code, signal) => resolve({ code, signal }))),

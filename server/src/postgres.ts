@@ -65,16 +65,18 @@ export class PostgresRepository implements ExperienceRepository {
         `INSERT INTO experience_events
           (event_id, participant_hash, trial_id, plugin_module, plugin_version, task_id,
            retest_of_receipt_id, dsh_version, outcome, retention, loader_health,
-           assistant_messages, tool_errors, agent_errors, duration_ms, first_reply_ms,
+           assistant_messages, tool_errors, agent_errors, process_crashes, crash_signatures,
+           duration_ms, first_reply_ms,
            note, note_expires_at, cluster_key, occurred_at, created_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
          ON CONFLICT (event_id) DO NOTHING
          RETURNING event_id`,
         [
           event.eventId, participantHash, event.trialId, event.pluginModule, event.pluginVersion ?? null,
           event.taskId ?? null, event.retestOfReceiptId ?? null, event.dshVersion, event.outcome,
           event.retention, event.loaderHealth, event.assistantMessages, event.toolErrors,
-          event.agentErrors, event.durationMs, event.firstReplyMs ?? null, event.note ?? null,
+          event.agentErrors, event.processCrashes, JSON.stringify(event.crashes),
+          event.durationMs, event.firstReplyMs ?? null, event.note ?? null,
           event.note === undefined ? null : now + 30 * 24 * 60 * 60 * 1_000,
           key, event.occurredAt, now,
         ],

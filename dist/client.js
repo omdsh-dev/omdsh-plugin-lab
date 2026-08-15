@@ -37,8 +37,6 @@ function commandText(result) {
 var LabController = class {
 	view = INITIAL_VIEW;
 	listeners = /* @__PURE__ */ new Set();
-	mounted = /* @__PURE__ */ new Map();
-	mountOrder = 0;
 	constructor(remote, sessionId) {
 		this.remote = remote;
 		this.sessionId = sessionId;
@@ -55,14 +53,6 @@ var LabController = class {
 			...this.view,
 			active
 		});
-	}
-	observe(messageId) {
-		this.mounted.set(messageId, ++this.mountOrder);
-		this.publishLatest();
-		return () => {
-			this.mounted.delete(messageId);
-			this.publishLatest();
-		};
 	}
 	async record(messageId, outcome) {
 		this.publish({
@@ -140,15 +130,6 @@ var LabController = class {
 			};
 		}
 	}
-	publishLatest() {
-		let latest;
-		for (const row of this.mounted) if (latest === void 0 || row[1] > latest[1]) latest = row;
-		const { latestMessageId: _latestMessageId,...view } = this.view;
-		this.publish(latest === void 0 ? view : {
-			...view,
-			latestMessageId: latest[0]
-		});
-	}
 	publish(view) {
 		this.view = Object.freeze(view);
 		for (const listener of [...this.listeners]) listener();
@@ -194,14 +175,21 @@ function shareLabel(outcome) {
 	if (outcome === "partial") return "查找相似问题";
 	return "加入并等待修复";
 }
-function visible(view, messageId) {
-	return view.pending?.messageId === messageId || view.active && view.latestMessageId === messageId;
+/** Latest durable assistant identity from the rc.6 conversation projection. */
+function latestAssistantMessageId(nodes) {
+	for (let index = nodes.length - 1; index >= 0; index -= 1) {
+		const node = nodes[index];
+		if (node?.kind === "assistant" && node.messageId !== void 0) return node.messageId;
+	}
 }
-function ExperienceResultCard({ messageId, usePluginLab, observe, record, join, dismiss }) {
+function visible(view, messageId, latestMessageId) {
+	return view.pending?.messageId === messageId || view.active && latestMessageId === messageId;
+}
+function ExperienceResultCard({ messageId, useSession, usePluginLab, record, join, dismiss }) {
 	const view = usePluginLab((value) => value);
+	const latestMessageId = useSession((snapshot) => latestAssistantMessageId(snapshot.nodes));
 	const [open, setOpen] = (0, react.useState)(false);
-	(0, react.useEffect)(() => observe(messageId), [messageId, observe]);
-	if (!visible(view, messageId)) return null;
+	if (!visible(view, messageId, latestMessageId)) return null;
 	const pending = view.pending?.messageId === messageId ? view.pending : void 0;
 	pending?.phase === "saving" || pending?.phase;
 	return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
@@ -372,6 +360,9 @@ const inject = [
 ];
 function apply(ctx) {
 	const controllers = /* @__PURE__ */ new Map();
+	ctx.effect(() => () => {
+		controllers.clear();
+	}, "plugin-lab: client controller lifecycle");
 	const controllerFor = (sessionId) => {
 		let controller = controllers.get(sessionId);
 		if (controller === void 0) {
@@ -380,7 +371,8 @@ function apply(ctx) {
 		}
 		return controller;
 	};
-	ctx.on("command/executed", (sessionId, name) => {
+	ctx.on("command/executed", (sessionId, name, result) => {
+		if (result.kind !== "success") return;
 		if (name === "omdsh-start" || name === "omdsh-retest") controllerFor(sessionId).setTrialActive(true);
 		if (name === "omdsh-result" || name === "omdsh-feedback") controllerFor(sessionId).setTrialActive(false);
 	});
@@ -392,7 +384,6 @@ function apply(ctx) {
 			const controller = controllerFor(sessionId);
 			return {
 				hooks: { pluginLab: controller },
-				observe: (messageId) => controller.observe(messageId),
 				record: (messageId, outcome) => controller.record(messageId, outcome),
 				join: () => controller.join(),
 				dismiss: () => controller.dismiss()

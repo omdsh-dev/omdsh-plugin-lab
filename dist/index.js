@@ -1,6 +1,7 @@
 /** Consent-first plugin trial feedback loop for DeepSeek Harness. */
 import { createRequire } from 'node:module';
 import z from '@deepseek-ai/schemastery';
+import { runtimeCrashSignal } from './crash.js';
 import { diagnoseExperience } from './diagnosis.js';
 import { FEEDBACK_USAGE, JOIN_USAGE, parseFeedbackInput, parseResultInput, parseStartInput, RESULT_USAGE, RETEST_USAGE, retentionForOutcome, START_USAGE, } from './input.js';
 import { EXPERIENCE_SCHEMA_VERSION, } from './protocol.js';
@@ -34,6 +35,9 @@ function emptyMetrics() {
         toolCalls: 0,
         toolErrors: 0,
         agentErrors: 0,
+        processCrashes: 0,
+        crashes: [],
+        crashIds: new Set(),
     };
 }
 function snapshotMetrics(metrics) {
@@ -44,6 +48,8 @@ function snapshotMetrics(metrics) {
         toolCalls: metrics.toolCalls,
         toolErrors: metrics.toolErrors,
         agentErrors: metrics.agentErrors,
+        processCrashes: metrics.processCrashes,
+        ...metrics.crashes.length === 0 ? {} : { crashes: [...metrics.crashes] },
         ...metrics.firstReplyMs === undefined ? {} : { firstReplyMs: metrics.firstReplyMs },
         ...metrics.lastTurnReason === undefined ? {} : { lastTurnReason: metrics.lastTurnReason },
     };
@@ -52,6 +58,16 @@ function reasonKind(value) {
     if (typeof value !== 'object' || value === null || !('kind' in value))
         return undefined;
     return typeof value.kind === 'string' ? value.kind : undefined;
+}
+function recordCrash(state, record) {
+    if (record.trialId !== state.trialId || state.metrics.crashIds.has(record.crashId))
+        return;
+    state.metrics.crashIds.add(record.crashId);
+    state.metrics.processCrashes += 1;
+    if (state.metrics.crashes.length < 8
+        && !state.metrics.crashes.some(crash => crash.fingerprint === record.crash.fingerprint)) {
+        state.metrics.crashes.push(record.crash);
+    }
 }
 function observe(state, event) {
     if (event.seq <= state.startSeq)
@@ -74,6 +90,9 @@ function observe(state, event) {
         case 'tool/result':
             if (event.data.error !== undefined)
                 state.metrics.toolErrors += 1;
+            return;
+        case 'omdsh/runtime-crashed':
+            recordCrash(state, event.data);
             return;
         default:
             return;
@@ -187,8 +206,11 @@ export function apply(ctx, rawConfig) {
                 observe(state, event);
             }
         }
-        if (state !== undefined)
+        if (state !== undefined) {
+            for (const record of store.crashRecords(state.trialId))
+                recordCrash(state, record);
             trials.set(sessionKey(session), state);
+        }
     };
     ctx.on('session/created', adopt);
     ctx.on('session/disposed', session => { trials.delete(sessionKey(session)); });
@@ -204,6 +226,36 @@ export function apply(ctx, rawConfig) {
     });
     for (const session of ctx.sessions.list())
         adopt(session);
+    const monitorCrash = (error, origin) => {
+        const crash = runtimeCrashSignal(error, origin);
+        const occurredAt = Date.now();
+        for (const session of ctx.sessions.list()) {
+            const state = trials.get(sessionKey(session));
+            if (state === undefined)
+                continue;
+            const record = {
+                crashId: crypto.randomUUID(),
+                trialId: state.trialId,
+                occurredAt,
+                crash,
+            };
+            try {
+                store.appendCrash(record);
+            }
+            catch {
+                // Keep monitoring best-effort: never replace the original process failure.
+            }
+            recordCrash(state, record);
+            try {
+                session.append('omdsh/runtime-crashed', record);
+            }
+            catch {
+                // The synchronous journal above remains recoverable if Session persistence cannot run.
+            }
+        }
+    };
+    process.on('uncaughtExceptionMonitor', monitorCrash);
+    ctx.effect(() => () => { process.off('uncaughtExceptionMonitor', monitorCrash); }, 'plugin-lab crash monitor');
     const beginTrial = (invocation, input, retestOfReceiptId) => {
         const key = sessionKey(invocation.agent.session);
         if (trials.has(key)) {
@@ -456,6 +508,7 @@ export function apply(ctx, rawConfig) {
                 `Assistant 回复：${metrics.assistantMessages}`,
                 `Tool：${metrics.toolCalls} 次，错误 ${metrics.toolErrors} 次`,
                 `Turn：${metrics.turnsCompleted}/${metrics.turnsStarted}`,
+                `进程崩溃：${metrics.processCrashes} 次${metrics.crashes?.[0] === undefined ? '' : `（${metrics.crashes[0].name} / ${metrics.crashes[0].fingerprint}）`}`,
                 `首回复：${metrics.firstReplyMs === undefined ? '尚未产生' : `${metrics.firstReplyMs} ms`}`,
             ].join('\n'),
         };
@@ -468,6 +521,7 @@ export function apply(ctx, rawConfig) {
             '匿名结构化字段：插件名/版本、DSH/Node/OS、任务 ID、加载状态、时延和错误计数、结果与保留意愿。',
             '永不自动发送：Prompt、回复正文、Tool 参数/结果、cwd、Session ID。',
             '备注默认不发送；只有 --share-note 会发送备注。',
+            '进行中 Trial 若遇到进程崩溃，只记录错误类型、错误码、归一化首帧和指纹；不记录原始 message、完整 stack 或绝对路径。',
             `本地数据：${store.dataDir}`,
             '结果先用 /omdsh-result 存在本机；/omdsh-join latest 才加入匿名跟进。',
             '发送前也可在 /omdsh-feedback 参数末尾加 --dry-run 查看完整 JSON。',

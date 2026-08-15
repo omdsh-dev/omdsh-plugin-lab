@@ -1,7 +1,7 @@
 /** Consent-first plugin trial feedback loop for DeepSeek Harness. */
 import type { Context } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
-import { type LoaderHealth, type TrialPluginRef } from './protocol.js';
+import { type LoaderHealth, type RuntimeCrashSignal, type TrialPluginRef } from './protocol.js';
 export declare const name = "omdsh-plugin-lab";
 export declare const inject: string[];
 export interface Config {
@@ -31,6 +31,12 @@ declare module '@deepseek-ai/dsh-session/types' {
             retention: 'keep' | 'unsure' | 'remove';
             requestedShare: boolean;
             noteShared: boolean;
+        };
+        'omdsh/runtime-crashed': {
+            crashId: string;
+            trialId: string;
+            occurredAt: number;
+            crash: RuntimeCrashSignal;
         };
     }
 }

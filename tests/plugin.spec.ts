@@ -1,4 +1,4 @@
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, readFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -100,5 +100,79 @@ describe('DSH plugin integration', () => {
     expect(posts).toBe(1)
     await pluginFiber.dispose()
     await new Promise<void>(resolve => server.close(() => resolve()))
+  })
+
+  it('rehydrates an active Trial and all commands across a Host plugin reload', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'omdsh-plugin-lab-'))
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(CommandRuntime)
+    const config = { dataDir: join(root, 'data'), profileLabel: 'reload-test' }
+    const first = await ctx.plugin(plugin, config)
+    const session = ctx.sessions.create()
+    const agent = { id: session.id, session } as Agent
+    const signal = new AbortController().signal
+    const commandNames = (await ctx.commands.list(agent)).map(command => command.name)
+    expect(commandNames).toEqual(expect.arrayContaining([
+      'omdsh-start', 'omdsh-feedback', 'omdsh-result', 'omdsh-join', 'omdsh-inbox',
+      'omdsh-retest', 'omdsh-status', 'omdsh-privacy', 'omdsh-reset-id',
+    ]))
+
+    await ctx.commands.execute(agent, '/omdsh-start @example/reload#1.0.0 task-reload', signal)
+    await first.dispose()
+    const second = await ctx.plugin(plugin, config)
+
+    const restored = await ctx.commands.execute(agent, '/omdsh-status', signal)
+    expect(restored?.result.text).toContain('Trial：@example/reload#1.0.0')
+    const settled = await ctx.commands.execute(agent, '/omdsh-result worked', signal)
+    expect(settled?.result.text).toContain('只保存在本机')
+    await second.dispose()
+  })
+
+  it('records a sanitized process crash without intercepting it and restores it after reload', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'omdsh-plugin-lab-'))
+    const dataDir = join(root, 'data')
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(CommandRuntime)
+    const before = new Set(process.listeners('uncaughtExceptionMonitor'))
+    const first = await ctx.plugin(plugin, { dataDir, profileLabel: 'crash-test' })
+    const monitor = process.listeners('uncaughtExceptionMonitor').find(listener => !before.has(listener))
+    expect(monitor).toBeDefined()
+    const session = ctx.sessions.create()
+    const agent = { id: session.id, session } as Agent
+    const signal = new AbortController().signal
+    await ctx.commands.execute(agent, '/omdsh-start @example/crasher#1.0.0 crash-task', signal)
+
+    const crash = Object.assign(new TypeError('secret customer payload'), { code: 'ERR_PLUGIN_CRASH' })
+    crash.stack = 'TypeError: secret customer payload\n    at privateFn (file:///Users/private/app/node_modules/@example/crasher/dist/index.js:12:4)'
+    ;(monitor as NodeJS.UncaughtExceptionListener)(crash, 'uncaughtException')
+    const status = await ctx.commands.execute(agent, '/omdsh-status', signal)
+    expect(status?.result.text).toContain('进程崩溃：1 次（TypeError /')
+    const journal = readFileSync(join(dataDir, 'crashes.ndjson'), 'utf8')
+    expect(journal).toContain('ERR_PLUGIN_CRASH')
+    expect(journal).not.toContain('secret customer payload')
+    expect(journal).not.toContain('/Users/private')
+    expect(journal).not.toContain('privateFn')
+
+    await first.dispose()
+    expect(process.listeners('uncaughtExceptionMonitor')).toEqual([...before])
+    const second = await ctx.plugin(plugin, { dataDir, profileLabel: 'crash-test' })
+    const settled = await ctx.commands.execute(agent, '/omdsh-result failed', signal)
+    expect(settled?.result.text).toContain('进程崩溃')
+    await second.dispose()
+
+    const stored = readFileSync(join(dataDir, 'events.ndjson'), 'utf8')
+    const record = JSON.parse(stored.trim()) as { event: { signals: Record<string, unknown> } }
+    expect(record.event.signals).toMatchObject({
+      processCrashes: 1,
+      crashes: [{
+        name: 'TypeError', code: 'ERR_PLUGIN_CRASH',
+        frame: 'node_modules/@example/crasher/dist/index.js:12:4',
+      }],
+    })
+    expect(stored).not.toContain('secret customer payload')
+    expect(stored).not.toContain('/Users/private')
+    expect(stored).not.toContain('privateFn')
   })
 })

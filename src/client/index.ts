@@ -14,6 +14,7 @@ export const inject = ['slots', 'remote', 'remote.commands']
 
 export function apply(ctx: ClientContext): void {
   const controllers = new Map<SessionId, LabController>()
+  ctx.effect(() => () => { controllers.clear() }, 'plugin-lab: client controller lifecycle')
   const controllerFor = (sessionId: SessionId): LabController => {
     let controller = controllers.get(sessionId)
     if (controller === undefined) {
@@ -23,7 +24,8 @@ export function apply(ctx: ClientContext): void {
     return controller
   }
 
-  ctx.on('command/executed', (sessionId, name) => {
+  ctx.on('command/executed', (sessionId, name, result) => {
+    if (result.kind !== 'success') return
     if (name === 'omdsh-start' || name === 'omdsh-retest') controllerFor(sessionId).setTrialActive(true)
     if (name === 'omdsh-result' || name === 'omdsh-feedback') controllerFor(sessionId).setTrialActive(false)
   })
@@ -36,7 +38,6 @@ export function apply(ctx: ClientContext): void {
       const controller = controllerFor(sessionId)
       return {
         hooks: { pluginLab: controller },
-        observe: messageId => controller.observe(messageId),
         record: (messageId, outcome) => controller.record(messageId, outcome),
         join: () => controller.join(),
         dismiss: () => controller.dismiss(),

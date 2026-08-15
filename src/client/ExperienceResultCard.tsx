@@ -1,12 +1,12 @@
-import { useEffect, useState, type CSSProperties } from 'react'
+import { useState, type CSSProperties } from 'react'
 import type { MessageId } from '@deepseek-ai/dsh-client-connection/client'
+import type { ConversationNode } from '@deepseek-ai/dsh-client-runtime/client'
 import type { InjectFace, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { TrialOutcome } from '../protocol.js'
 import type { LabController, LabView } from './controller.js'
 
 export interface LabInjected {
   hooks: { pluginLab: LabController }
-  observe: (messageId: MessageId) => () => void
   record: (messageId: MessageId, outcome: TrialOutcome) => Promise<void>
   join: () => Promise<void>
   dismiss: () => void
@@ -40,18 +40,27 @@ function shareLabel(outcome: TrialOutcome): string {
   return '加入并等待修复'
 }
 
-function visible(view: LabView, messageId: MessageId): boolean {
+/** Latest durable assistant identity from the rc.6 conversation projection. */
+export function latestAssistantMessageId(nodes: readonly ConversationNode[]): MessageId | undefined {
+  for (let index = nodes.length - 1; index >= 0; index -= 1) {
+    const node = nodes[index]
+    if (node?.kind === 'assistant' && node.messageId !== undefined) return node.messageId
+  }
+  return undefined
+}
+
+function visible(view: LabView, messageId: MessageId, latestMessageId: MessageId | undefined): boolean {
   return view.pending?.messageId === messageId
-    || (view.active && view.latestMessageId === messageId)
+    || (view.active && latestMessageId === messageId)
 }
 
 export function ExperienceResultCard({
-  messageId, usePluginLab, observe, record, join, dismiss,
+  messageId, useSession, usePluginLab, record, join, dismiss,
 }: ExperienceResultCardProps) {
   const view = usePluginLab(value => value)
+  const latestMessageId = useSession(snapshot => latestAssistantMessageId(snapshot.nodes))
   const [open, setOpen] = useState(false)
-  useEffect(() => observe(messageId), [messageId, observe])
-  if (!visible(view, messageId)) return null
+  if (!visible(view, messageId, latestMessageId)) return null
   const pending = view.pending?.messageId === messageId ? view.pending : undefined
   const busy = pending?.phase === 'saving' || pending?.phase === 'joining'
   return (

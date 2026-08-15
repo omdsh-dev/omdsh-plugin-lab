@@ -41,13 +41,13 @@ flowchart LR
 ```sh
 pnpm install
 pnpm pack:release
-dsh plugin --profile web add ./oh-my-dsh-plugin-lab-0.2.1.tgz
+dsh plugin --profile web add ./oh-my-dsh-plugin-lab-0.2.2.tgz
 dsh --profile web
 ```
 
 Plugin Lab 是一个标准 DSH Bundle：`package.json` 通过 `dsh.bundle.patch` 声明 `cordis.patch.yml`，同一个包还通过 `dsh.client` 提供 Web 结果卡和收件箱入口。
 
-`0.2.1` 已针对 DeepSeek Harness `0.1.0-rc.6` 完成全新 Profile 安装、Host 启动、Web Client Loader 注册和真实浏览器加载验证。
+`0.2.2` 的 DSH Peer 契约从 `0.1.0-rc.6` 起，已完成全新 Profile 安装、Host 启动、Web Client Loader 注册、Slot 生命周期、组件交互和真实浏览器加载验证。
 
 ## 主要命令
 
@@ -69,6 +69,7 @@ Plugin Lab 是一个标准 DSH Bundle：`package.json` 通过 `dsh.bundle.patch`
 ```text
 $DSH_HOME/omdsh-plugin-lab/
   .install-id
+  crashes.ndjson
   events.ndjson
   share-requests.ndjson
   receipts.ndjson
@@ -83,6 +84,8 @@ $DSH_HOME/omdsh-plugin-lab/
 - 文件内容。
 
 匿名事件只包含插件与版本、DSH/Node/系统版本、任务标签、Loader 状态、计数与时序、用户选择的结果。文字备注默认只留本地，只有 `--share-note` 才发送；服务端共享备注最长保留 30 天，并在后续写入时清理过期值。
+
+进行中的 Trial 遇到未捕获异常时，会先把脱敏崩溃信号同步写入 `crashes.ndjson`，以便 DSH 重启后恢复。它只含错误类型、受限错误码、归一化首帧与稳定指纹，不含原始错误信息、完整堆栈、函数名或绝对路径。监听使用 Node 的 `uncaughtExceptionMonitor`，不会捕获异常、阻止退出或改变程序原有崩溃行为；这些信号仍只有在用户明确加入跟进后才会上传。
 
 ## 启用中央反馈
 
@@ -179,7 +182,7 @@ received → clustered → reported → retest-requested → verified → closed
 pnpm test:all
 ```
 
-验证包含 Host 命令与 Session 集成、两阶段分享、隐私投影、本地 Outbox、回执刷新、Client 结果卡控制器、聚类/发布/复测领域逻辑、服务端类型检查，以及真实的 `dsh plugin add`、rc.6 Client Loader 产物执行、Profile 启动和移除生命周期。
+验证包含 Host 命令与 Session 集成、崩溃同步日志及重启恢复、两阶段分享、隐私投影、本地 Outbox、回执刷新、Client 结果卡真实点击、rc.6 Slot 生命周期、聚类/发布/复测领域逻辑、服务端类型检查，以及真实的 `dsh plugin add`、rc.6 Client Loader 产物执行、Profile 启动和移除生命周期。
 
 ## 当前边界
 

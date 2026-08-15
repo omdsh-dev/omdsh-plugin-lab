@@ -1,8 +1,9 @@
-import type { IngestReceipt, LocalExperienceRecord } from './protocol.js';
+import type { IngestReceipt, LocalCrashRecord, LocalExperienceRecord } from './protocol.js';
 export declare function defaultDataDir(): string;
 export declare class ExperienceStore {
     readonly dataDir: string;
     readonly eventsPath: string;
+    readonly crashesPath: string;
     readonly receiptsPath: string;
     readonly shareRequestsPath: string;
     readonly receiptSeenPath: string;
@@ -11,6 +12,9 @@ export declare class ExperienceStore {
     participantId(): string;
     resetParticipantId(): string;
     append(record: LocalExperienceRecord): void;
+    /** This deliberately uses synchronous append: the process may exit immediately afterward. */
+    appendCrash(record: LocalCrashRecord): void;
+    crashRecords(trialId?: string): LocalCrashRecord[];
     appendReceipt(receipt: IngestReceipt): void;
     requestShare(eventId: string, shareNote?: boolean): void;
     markSeen(receipt: IngestReceipt): void;

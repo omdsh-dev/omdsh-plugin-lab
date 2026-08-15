@@ -1,4 +1,4 @@
-import type { AcceptedEvent } from './types.js'
+import type { AcceptedEvent, RuntimeCrashSignal } from './types.js'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu
 
@@ -19,6 +19,41 @@ function optionalText(value: unknown, name: string, max = 256): string | undefin
 function count(value: unknown, name: string): number {
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) throw new TypeError(`${name} must be a non-negative integer`)
   return value
+}
+
+function crashSignals(value: unknown): RuntimeCrashSignal[] {
+  if (value === undefined) return []
+  if (!Array.isArray(value) || value.length > 8) throw new TypeError('signals.crashes must be an array of at most 8 items')
+  return value.map((item, index) => {
+    const crash = row(item, `signals.crashes[${index}]`)
+    const origin = crash.origin
+    if (origin !== 'uncaughtException' && origin !== 'unhandledRejection') {
+      throw new TypeError(`signals.crashes[${index}].origin is invalid`)
+    }
+    const fingerprint = text(crash.fingerprint, `signals.crashes[${index}].fingerprint`, 20)
+    if (!/^[0-9a-f]{20}$/u.test(fingerprint)) throw new TypeError(`signals.crashes[${index}].fingerprint is invalid`)
+    const code = optionalText(crash.code, `signals.crashes[${index}].code`, 64)
+    const name = text(crash.name, `signals.crashes[${index}].name`, 80)
+    if (!/^[A-Za-z][A-Za-z0-9_.-]{0,79}$/u.test(name)) {
+      throw new TypeError(`signals.crashes[${index}].name is invalid`)
+    }
+    if (code !== undefined && !/^[A-Z][A-Z0-9_]{1,63}$/u.test(code)) {
+      throw new TypeError(`signals.crashes[${index}].code is invalid`)
+    }
+    const frame = optionalText(crash.frame, `signals.crashes[${index}].frame`, 200)
+    if (frame !== undefined
+      && (frame.startsWith('/') || frame.startsWith('file:') || /^[A-Za-z]:[\\/]/u.test(frame)
+        || frame.includes('\\') || frame.split('/').includes('..'))) {
+      throw new TypeError(`signals.crashes[${index}].frame must not contain an unsafe path`)
+    }
+    return {
+      fingerprint,
+      name,
+      origin,
+      ...code === undefined ? {} : { code },
+      ...frame === undefined ? {} : { frame },
+    }
+  })
 }
 
 export function acceptEvent(value: unknown): AcceptedEvent {
@@ -42,6 +77,11 @@ export function acceptEvent(value: unknown): AcceptedEvent {
   const pluginVersion = optionalText(plugin.version, 'trial.plugin.version', 64)
   const taskId = optionalText(trial.taskId, 'trial.taskId', 128)
   const retestOfReceiptId = optionalText(trial.retestOfReceiptId, 'trial.retestOfReceiptId', 128)
+  const crashes = crashSignals(signals.crashes)
+  const processCrashes = signals.processCrashes === undefined
+    ? crashes.length
+    : count(signals.processCrashes, 'signals.processCrashes')
+  if (processCrashes < crashes.length) throw new TypeError('signals.processCrashes cannot be smaller than signals.crashes')
   return {
     eventId,
     participantId,
@@ -58,6 +98,8 @@ export function acceptEvent(value: unknown): AcceptedEvent {
     assistantMessages: count(signals.assistantMessages, 'signals.assistantMessages'),
     toolErrors: count(signals.toolErrors, 'signals.toolErrors'),
     agentErrors: count(signals.agentErrors, 'signals.agentErrors'),
+    processCrashes,
+    crashes,
     durationMs: count(trial.durationMs, 'trial.durationMs'),
     ...signals.firstReplyMs === undefined ? {} : { firstReplyMs: count(signals.firstReplyMs, 'signals.firstReplyMs') },
     ...note === undefined ? {} : { note },
