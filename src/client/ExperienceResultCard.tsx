@@ -8,7 +8,6 @@ import type { LabController, LabView } from './controller.js'
 export interface LabInjected {
   hooks: { pluginLab: LabController }
   record: (
-    messageId: MessageId,
     verdict: ExperienceVerdict,
     category: FeedbackCategory,
   ) => Promise<void>
@@ -65,8 +64,7 @@ export function latestAssistantMessageId(nodes: readonly ConversationNode[]): Me
 }
 
 function visible(view: LabView, messageId: MessageId, latestMessageId: MessageId | undefined): boolean {
-  return view.pending?.messageId === messageId
-    || (view.active && latestMessageId === messageId)
+  return (view.pending !== undefined || view.active) && latestMessageId === messageId
 }
 
 export function ExperienceResultCard({
@@ -77,7 +75,7 @@ export function ExperienceResultCard({
   const [open, setOpen] = useState(false)
   const [selectedVerdict, setSelectedVerdict] = useState<ExperienceVerdict>()
   if (!visible(view, messageId, latestMessageId)) return null
-  const pending = view.pending?.messageId === messageId ? view.pending : undefined
+  const pending = view.pending
   const busy = pending?.phase === 'saving' || pending?.phase === 'joining'
   return (
     <span style={{ position: 'relative', display: 'inline-flex' }}>
@@ -106,7 +104,7 @@ export function ExperienceResultCard({
                   key={choice.value}
                   type="button"
                   style={choiceStyle}
-                  onClick={() => { void record(messageId, selectedVerdict, choice.value) }}
+                  onClick={() => { void record(selectedVerdict, choice.value) }}
                 >
                   {choice.label}
                 </button>

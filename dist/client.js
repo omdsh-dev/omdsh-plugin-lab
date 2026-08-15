@@ -4017,12 +4017,10 @@ var LabController = class {
 			active
 		});
 	}
-	async record(messageId, verdict$1, category$1) {
-		const identity = messageId === void 0 ? {} : { messageId };
+	async record(verdict$1, category$1) {
 		this.publish({
 			...this.view,
 			pending: {
-				...identity,
 				verdict: verdict$1,
 				category: category$1,
 				phase: "saving"
@@ -4033,7 +4031,6 @@ var LabController = class {
 			...this.view,
 			active: false,
 			pending: {
-				...identity,
 				verdict: verdict$1,
 				category: category$1,
 				phase: "local",
@@ -4043,7 +4040,6 @@ var LabController = class {
 		else this.publish({
 			...this.view,
 			pending: {
-				...identity,
 				verdict: verdict$1,
 				category: category$1,
 				phase: "error",
@@ -4112,14 +4108,15 @@ var LabController = class {
 //#endregion
 //#region src/client/PluginLabButton.tsx
 const triggerStyle$1 = {
-	height: 28,
-	padding: "0 10px",
-	border: "none",
+	minHeight: 30,
+	padding: "0 12px",
+	border: "1px solid var(--dsw-alias-border-secondary)",
 	borderRadius: 14,
 	cursor: "pointer",
-	background: "transparent",
-	color: "var(--dsw-alias-label-tertiary)",
-	fontSize: 12
+	background: "var(--dsw-alias-interactive-bg-hover)",
+	color: "var(--dsw-alias-label-secondary)",
+	fontSize: 12,
+	fontWeight: 600
 };
 const panelStyle$1 = {
 	position: "absolute",
@@ -4144,6 +4141,14 @@ const choiceStyle$1 = {
 	background: "transparent",
 	color: "inherit",
 	cursor: "pointer"
+};
+const previewStyle = {
+	display: "grid",
+	gap: 8,
+	padding: 11,
+	border: "1px solid var(--dsw-alias-border-secondary)",
+	borderRadius: 10,
+	background: "var(--dsw-alias-bg-secondary)"
 };
 const CATEGORY_CHOICES$1 = [
 	{
@@ -4179,11 +4184,6 @@ const CATEGORY_CHOICES$1 = [
 		label: "整体体验"
 	}
 ];
-function shareLabel$1(verdict$1) {
-	if (verdict$1 === "good") return "提交实测";
-	if (verdict$1 === "mixed") return "提交反馈";
-	return "提交并等待修复";
-}
 function PluginLabButton({ usePluginLab, record, join, dismiss, checkHealth, checkInbox }) {
 	const view = usePluginLab((value) => value);
 	const [open, setOpen] = (0, react.useState)(false);
@@ -4212,12 +4212,13 @@ function PluginLabButton({ usePluginLab, record, join, dismiss, checkHealth, che
 		},
 		children: [/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("button", {
 			type: "button",
+			"aria-label": "让 Agent 帮我反馈",
 			style: triggerStyle$1,
 			onClick: openPanel,
-			children: ["插件反馈", view.active ? " ·" : ""]
+			children: ["让 Agent 帮我反馈", view.active ? " ·" : ""]
 		}), open && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
 			role: "dialog",
-			"aria-label": "插件反馈",
+			"aria-label": "让 Agent 帮我反馈",
 			style: panelStyle$1,
 			children: [
 				/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
@@ -4227,7 +4228,16 @@ function PluginLabButton({ usePluginLab, record, join, dismiss, checkHealth, che
 						justifyContent: "space-between",
 						gap: 12
 					},
-					children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("strong", { children: "插件反馈" }), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+					children: [/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+						style: {
+							display: "grid",
+							gap: 2
+						},
+						children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("strong", { children: "让 Agent 帮你反馈" }), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("small", {
+							style: { color: "var(--dsw-alias-label-tertiary)" },
+							children: "只整理插件状态与点选项"
+						})]
+					}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
 						type: "button",
 						"aria-label": "关闭插件反馈",
 						style: {
@@ -4263,39 +4273,46 @@ function PluginLabButton({ usePluginLab, record, join, dismiss, checkHealth, che
 						gap: 9,
 						marginTop: 12
 					},
-					children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("strong", { children: "这次体验怎么样？" }), /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
-						style: {
-							display: "grid",
-							gridTemplateColumns: "repeat(3, 1fr)",
-							gap: 7
-						},
-						children: [
-							/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
-								type: "button",
-								style: choiceStyle$1,
-								onClick: () => {
-									setSelectedVerdict("good");
-								},
-								children: "好用"
-							}),
-							/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
-								type: "button",
-								style: choiceStyle$1,
-								onClick: () => {
-									setSelectedVerdict("mixed");
-								},
-								children: "一般"
-							}),
-							/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
-								type: "button",
-								style: choiceStyle$1,
-								onClick: () => {
-									setSelectedVerdict("bad");
-								},
-								children: "不好用"
-							})
-						]
-					})]
+					children: [
+						/* @__PURE__ */ (0, react_jsx_runtime.jsx)("strong", { children: "这次体验怎么样？" }),
+						/* @__PURE__ */ (0, react_jsx_runtime.jsx)("small", {
+							style: { color: "var(--dsw-alias-label-tertiary)" },
+							children: "Agent 不读取对话来猜测体验，这一项由你选择。"
+						}),
+						/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+							style: {
+								display: "grid",
+								gridTemplateColumns: "repeat(3, 1fr)",
+								gap: 7
+							},
+							children: [
+								/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+									type: "button",
+									style: choiceStyle$1,
+									onClick: () => {
+										setSelectedVerdict("good");
+									},
+									children: "好用"
+								}),
+								/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+									type: "button",
+									style: choiceStyle$1,
+									onClick: () => {
+										setSelectedVerdict("mixed");
+									},
+									children: "一般"
+								}),
+								/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+									type: "button",
+									style: choiceStyle$1,
+									onClick: () => {
+										setSelectedVerdict("bad");
+									},
+									children: "不好用"
+								})
+							]
+						})
+					]
 				}),
 				pending === void 0 && view.active && selectedVerdict !== void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
 					style: {
@@ -4304,7 +4321,7 @@ function PluginLabButton({ usePluginLab, record, join, dismiss, checkHealth, che
 						marginTop: 12
 					},
 					children: [
-						/* @__PURE__ */ (0, react_jsx_runtime.jsx)("strong", { children: "主要是哪方面？" }),
+						/* @__PURE__ */ (0, react_jsx_runtime.jsx)("strong", { children: "让 Agent 按哪个方面整理？" }),
 						/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
 							style: {
 								display: "grid",
@@ -4341,14 +4358,24 @@ function PluginLabButton({ usePluginLab, record, join, dismiss, checkHealth, che
 						marginTop: 12
 					},
 					children: [
-						/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-							style: {
-								whiteSpace: "pre-wrap",
-								color: "var(--dsw-alias-label-secondary)"
-							},
-							children: pending.phase === "saving" ? "正在生成脱敏预览…" : pending.phase === "joining" ? "正在提交…" : pending.text
+						/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+							style: previewStyle,
+							children: [
+								/* @__PURE__ */ (0, react_jsx_runtime.jsx)("strong", { children: pending.phase === "joined" ? "发送结果" : "发送前预览" }),
+								/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+									style: {
+										whiteSpace: "pre-wrap",
+										color: "var(--dsw-alias-label-secondary)"
+									},
+									children: pending.phase === "saving" ? "Agent 正在生成固定模板预览…" : pending.phase === "joining" ? "正在发送你确认的有限字段…" : pending.text
+								}),
+								(pending.phase === "local" || pending.phase === "saving") && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("small", {
+									style: { color: "var(--dsw-alias-label-tertiary)" },
+									children: "不会附带当前任务、本地对话、Prompt、回复或日志。"
+								})
+							]
 						}),
-						pending.phase === "local" && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("button", {
+						pending.phase === "local" && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
 							type: "button",
 							disabled: busy,
 							style: {
@@ -4358,7 +4385,7 @@ function PluginLabButton({ usePluginLab, record, join, dismiss, checkHealth, che
 							onClick: () => {
 								join();
 							},
-							children: ["确认", shareLabel$1(pending.verdict)]
+							children: "确认发送这条反馈"
 						}),
 						(pending.phase === "joined" || pending.phase === "error") && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
 							type: "button",
@@ -4398,7 +4425,7 @@ function PluginLabButton({ usePluginLab, record, join, dismiss, checkHealth, che
 						children: inboxBusy ? "检查中…" : "查看进展"
 					}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("small", {
 						style: { color: "var(--dsw-alias-label-tertiary)" },
-						children: "不读取任务、对话或日志"
+						children: "不会调用模型读取本地对话"
 					})]
 				}),
 				inbox !== void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
@@ -4526,7 +4553,7 @@ function latestAssistantMessageId(nodes) {
 	}
 }
 function visible(view, messageId, latestMessageId) {
-	return view.pending?.messageId === messageId || view.active && latestMessageId === messageId;
+	return (view.pending !== void 0 || view.active) && latestMessageId === messageId;
 }
 function ExperienceResultCard({ messageId, useSession, usePluginLab, record, join, dismiss }) {
 	const view = usePluginLab((value) => value);
@@ -4534,7 +4561,7 @@ function ExperienceResultCard({ messageId, useSession, usePluginLab, record, joi
 	const [open, setOpen] = (0, react.useState)(false);
 	const [selectedVerdict, setSelectedVerdict] = (0, react.useState)();
 	if (!visible(view, messageId, latestMessageId)) return null;
-	const pending = view.pending?.messageId === messageId ? view.pending : void 0;
+	const pending = view.pending;
 	pending?.phase === "saving" || pending?.phase;
 	return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
 		style: {
@@ -4611,7 +4638,7 @@ function ExperienceResultCard({ messageId, useSession, usePluginLab, record, joi
 						type: "button",
 						style: choiceStyle,
 						onClick: () => {
-							record(messageId, selectedVerdict, choice.value);
+							record(selectedVerdict, choice.value);
 						},
 						children: choice.label
 					}, choice.value)), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
@@ -4810,7 +4837,7 @@ function apply(ctx) {
 			const controller = controllerFor(sessionId);
 			return {
 				hooks: { pluginLab: controller },
-				record: (outcome, category$1) => controller.record(void 0, outcome, category$1),
+				record: (outcome, category$1) => controller.record(outcome, category$1),
 				join: () => controller.join(),
 				dismiss: () => controller.dismiss(),
 				checkHealth: () => controller.probe(),

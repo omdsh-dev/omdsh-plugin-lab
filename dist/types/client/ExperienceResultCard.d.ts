@@ -7,7 +7,7 @@ export interface LabInjected {
     hooks: {
         pluginLab: LabController;
     };
-    record: (messageId: MessageId, verdict: ExperienceVerdict, category: FeedbackCategory) => Promise<void>;
+    record: (verdict: ExperienceVerdict, category: FeedbackCategory) => Promise<void>;
     join: () => Promise<void>;
     dismiss: () => void;
 }

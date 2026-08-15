@@ -41,7 +41,7 @@ describe('DSH strict feedback integration', () => {
     const feedback = await ctx.commands.execute(agent, '/omdsh-result bad reliability', signal)
     expect(feedback?.result.text).toContain('稳定性')
     expect(feedback?.result.text).toContain('不好用')
-    expect(feedback?.result.text).toContain('不含当前任务、对话或日志')
+    expect(feedback?.result.text).toContain('不会附带本地任务、对话、Prompt、回复、日志或文件')
     expect(feedback?.result.text).not.toContain(dataDir)
     const stored = JSON.parse(readFileSync(join(dataDir, 'feedback-v3.ndjson'), 'utf8').trim())
     expect(stored).toEqual({
@@ -75,7 +75,7 @@ describe('DSH strict feedback integration', () => {
     })
     await ctx.commands.execute(agent, '/omdsh-start plugin', signal)
     const feedback = await ctx.commands.execute(agent, '/omdsh-result good general', signal)
-    expect(feedback?.result.text).toContain('确认提交后才会发送')
+    expect(feedback?.result.text).toContain('点击“确认发送这条反馈”前不会发送')
     await fiber.dispose()
   })
 

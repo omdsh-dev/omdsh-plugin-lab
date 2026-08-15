@@ -32,8 +32,8 @@ export function fixedSummary(plugin, health, experience, category) {
 /** Every readable preview line is derived from the exact closed upload packet. */
 export function renderUploadPreview(event) {
     return [
-        `待确认：${fixedSummary(event.plugin, event.health, event.experience, event.category)}`,
-        '不含当前任务、对话或日志；确认提交后才会发送。',
+        `待发送：${fixedSummary(event.plugin, event.health, event.experience, event.category)}`,
+        '不会附带本地任务、对话、Prompt、回复、日志或文件；点击“确认发送这条反馈”前不会发送。',
     ];
 }
 //# sourceMappingURL=summary.js.map

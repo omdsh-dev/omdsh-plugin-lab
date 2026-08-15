@@ -43,7 +43,7 @@ export function apply(ctx: ClientContext): void {
       const controller = controllerFor(sessionId)
       return {
         hooks: { pluginLab: controller },
-        record: (outcome, category) => controller.record(undefined, outcome, category),
+        record: (outcome, category) => controller.record(outcome, category),
         join: () => controller.join(),
         dismiss: () => controller.dismiss(),
         checkHealth: () => controller.probe(),
