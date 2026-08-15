@@ -32,13 +32,13 @@ Agent 可能已经拥有当前任务的正常会话上下文，但 Plugin Lab �
 ```sh
 pnpm install
 pnpm pack:release
-dsh plugin --profile web add ./oh-my-dsh-plugin-lab-0.4.3.tgz
+dsh plugin --profile web add ./oh-my-dsh-plugin-lab-0.4.4.tgz
 dsh --profile web
 ```
 
 Plugin Lab 是标准 DSH Bundle：`package.json` 通过 `dsh.bundle.patch` 声明 Host 插件，通过 `dsh.client` 提供唯一的 Web“让 Agent 帮我反馈”入口。探活、体验选择、脱敏预览、确认提交和进展都在这个入口中完成。
 
-版本 `0.4.3` 的 Peer 契约从 DSH `0.1.0-rc.6` 起。完整测试会执行真实的 rc.6 打包、安装、Host/Web 启动、Client Loader 注册和卸载。
+版本 `0.4.4` 的 Peer 契约从 DSH `0.1.0-rc.6` 起。完整测试会执行真实的 rc.6 打包、安装、Host/Web 启动、Client Loader 注册和卸载。
 
 ## 兼容命令与 Agent 工具
 
