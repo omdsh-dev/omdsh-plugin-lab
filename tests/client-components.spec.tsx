@@ -181,11 +181,37 @@ describe('rc.6 lightweight experience receipt', () => {
     fireEvent.click(screen.getByRole('button', { name: '体验回执 · 1 · 1 新' }))
     expect(await screen.findByRole('region', { name: '体验回执' })).toBeDefined()
     expect(screen.getByText('@example/older#1.0.0')).toBeDefined()
-    fireEvent.click(screen.getByRole('button', { name: /选择插件并反馈/ }))
+    fireEvent.click(screen.getByRole('button', { name: /选择插件/ }))
     fireEvent.click(await screen.findByRole('button', { name: /@example\/plugin运行失败/ }))
     expect(select).toHaveBeenCalledWith(SESSION, { moduleName: '@example/plugin' })
     expect(await screen.findByRole('group', { name: '@example/plugin 体验反馈' })).toBeDefined()
     expect(screen.queryByText('＋ 反馈插件')).toBeNull()
+  })
+
+  it('keeps the receipt sheet compact until the user asks for detail or all history', async () => {
+    const controller = new LabController(remote(), SESSION)
+    const items = [1, 2, 3, 4].map(index => ({
+      eventId: `00000000-0000-4000-8000-00000000000${index}`,
+      plugin: { moduleName: `@example/plugin-${index}` },
+      summary: `只在展开后显示的摘要 ${index}`,
+      localState: 'submitted' as const,
+      status: 'received' as const,
+      unread: false,
+    }))
+    render(<PluginLabButton {...propsFor(controller, [], {
+      loadReceipts: async () => ({ items, unreadCount: 0 }),
+    })} />)
+
+    fireEvent.click(await screen.findByRole('button', { name: '体验回执 · 4' }))
+    expect(await screen.findByText('@example/plugin-1')).toBeDefined()
+    expect(screen.getByText('@example/plugin-3')).toBeDefined()
+    expect(screen.queryByText('@example/plugin-4')).toBeNull()
+    expect(screen.queryByText('只在展开后显示的摘要 1')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: '查看 @example/plugin-1 回执详情' }))
+    expect(screen.getByText('只在展开后显示的摘要 1')).toBeDefined()
+    fireEvent.click(screen.getByRole('button', { name: '查看全部 4' }))
+    expect(screen.getByText('@example/plugin-4')).toBeDefined()
   })
 
   it('does not attach controls to a reply from before trial activation', async () => {

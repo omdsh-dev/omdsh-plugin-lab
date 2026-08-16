@@ -47,14 +47,14 @@ const toolbarButton: CSSProperties = {
 }
 
 const sheetStyle: CSSProperties = {
-  width: 'min(440px, calc(100vw - 40px))',
+  width: 'min(352px, calc(100vw - 28px))',
   boxSizing: 'border-box',
-  padding: 12,
+  padding: 10,
   border: `1px solid ${line}`,
-  borderRadius: 12,
+  borderRadius: 14,
   background: paper,
   color: ink,
-  boxShadow: '0 12px 34px rgba(15, 23, 42, .14)',
+  boxShadow: '0 10px 28px rgba(15, 23, 42, .12)',
   fontSize: 12,
 }
 
@@ -105,6 +105,8 @@ export function PluginLabButton({
   const latest = useSession(snapshot => latestAssistantAnchor(snapshot.nodes))
   const [open, setOpen] = useState(false)
   const [selecting, setSelecting] = useState(false)
+  const [showAll, setShowAll] = useState(false)
+  const [expandedEventId, setExpandedEventId] = useState<string>()
   const [plugins, setPlugins] = useState<readonly PluginChoice[]>([])
   const [query, setQuery] = useState('')
   const [busy, setBusy] = useState(false)
@@ -143,6 +145,8 @@ export function PluginLabButton({
     if (open) {
       setOpen(false)
       setSelecting(false)
+      setShowAll(false)
+      setExpandedEventId(undefined)
       setQuery('')
       return
     }
@@ -159,6 +163,7 @@ export function PluginLabButton({
     box.unreadCount > 0 ? `${box.unreadCount} 新` : undefined,
     showFallback && view.pending === undefined ? '待反馈' : undefined,
   ].filter((value): value is string => value !== undefined).join(' · ')
+  const visibleReceipts = showAll ? box.items : box.items.slice(0, 3)
 
   return (
     <span style={{ display: 'grid', width: '100%', justifyItems: 'end', gap: 6, padding: '2px 0' }}>
@@ -168,10 +173,10 @@ export function PluginLabButton({
 
       {open && (
         <span role="region" aria-label="体验回执" style={sheetStyle}>
-          <span style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 }}>
-            <span style={{ display: 'grid', gap: 1 }}>
+          <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+            <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 7 }}>
               <strong style={{ fontSize: 13 }}>体验回执</strong>
-              <small style={{ color: muted }}>本机留存 · 打开时更新进度</small>
+              <small style={{ color: muted }}>{box.items.length} 条 · 本机</small>
             </span>
             <button
               type="button"
@@ -205,18 +210,18 @@ export function PluginLabButton({
               type="button"
               style={{
                 display: 'flex', width: '100%', minHeight: 34, alignItems: 'center', justifyContent: 'space-between',
-                marginTop: 10, padding: '0 9px', border: `1px solid ${line}`, borderRadius: 8,
+                marginTop: 8, padding: '0 9px', border: `1px solid ${line}`, borderRadius: 8,
                 background: '#fff', color: ink, cursor: 'pointer', textAlign: 'left', fontSize: 12,
               }}
               onClick={beginSelection}
             >
-              <span>{view.plugin === undefined ? '＋ 选择插件并反馈' : '＋ 反馈另一个插件'}</span>
-              <small style={{ color: muted }}>只读取插件名与运行状态</small>
+              <span>{view.plugin === undefined ? '＋ 选择插件' : '＋ 更换插件'}</span>
+              <small style={{ color: muted }}>仅名称与状态</small>
             </button>
           )}
 
           {selecting && (
-            <span style={{ display: 'grid', gap: 7, marginTop: 10, padding: 9, border: `1px solid ${line}`, borderRadius: 9, background: '#fff' }}>
+            <span style={{ display: 'grid', gap: 7, marginTop: 8, padding: 8, border: `1px solid ${line}`, borderRadius: 9, background: '#fff' }}>
               <span style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 }}>
                 <strong style={{ fontSize: 12 }}>反馈哪个插件？</strong>
                 <button
@@ -236,7 +241,7 @@ export function PluginLabButton({
                   fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 12,
                 }}
               />
-              <span style={{ display: 'grid', gap: 2, maxHeight: 220, overflowY: 'auto' }}>
+              <span style={{ display: 'grid', gap: 2, maxHeight: 164, overflowY: 'auto' }}>
                 {busy && <small style={{ padding: 8, color: muted }}>正在读取插件清单…</small>}
                 {!busy && visiblePlugins.length === 0 && (
                   <small style={{ padding: 8, color: muted }}>
@@ -271,55 +276,79 @@ export function PluginLabButton({
             </span>
           )}
 
-          <span
+          {!selecting && <span
             style={{
               display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10,
-              marginTop: 12, paddingTop: 10, borderTop: `1px solid ${line}`,
+              marginTop: 10, paddingTop: 8, borderTop: `1px solid ${line}`,
             }}
           >
-            <strong style={{ fontSize: 12 }}>我的回执</strong>
-            <small style={{ color: muted }}>{box.items.length === 0 ? '暂无记录' : `${box.items.length} 条`}</small>
-          </span>
-          <span style={{ display: 'grid', gap: 8, maxHeight: 300, overflowY: 'auto', marginTop: 8 }}>
+            <strong style={{ fontSize: 11, letterSpacing: '.04em', color: '#475569' }}>最近进度</strong>
+            {box.items.length > 3 && (
+              <button
+                type="button"
+                style={{ ...toolbarButton, height: 22, padding: '0 4px', border: 0, background: 'transparent', color: accent }}
+                onClick={() => { setShowAll(value => !value); setExpandedEventId(undefined) }}
+              >{showAll ? '收起' : `查看全部 ${box.items.length}`}</button>
+            )}
+          </span>}
+          {!selecting && <span style={{ display: 'grid', maxHeight: showAll ? 280 : 190, overflowY: 'auto', marginTop: 3 }}>
             {busy && !selecting && <small style={{ padding: 8, color: muted }}>正在更新回执…</small>}
             {!busy && box.items.length === 0 && <small style={{ padding: 8, color: muted }}>还没有体验回执。</small>}
-            {!busy && box.items.map(item => {
+            {!busy && visibleReceipts.map(item => {
               const current = progressIndex(item)
               const trackingUrl = safeTrackingUrl(item.trackingUrl)
+              const expanded = expandedEventId === item.eventId
               return (
-                <span key={item.eventId} style={{ display: 'grid', gap: 6, padding: '9px 10px', border: `1px solid ${line}`, borderRadius: 10, background: '#fff' }}>
-                  <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                    <strong style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 11 }}>
+                <span
+                  key={item.eventId}
+                  style={{
+                    display: 'grid', gap: 5, padding: '7px 4px 8px', borderBottom: `1px solid ${line}`,
+                    background: expanded ? '#f8fafc' : 'transparent', borderRadius: expanded ? 8 : 0,
+                  }}
+                >
+                  <button
+                    type="button"
+                    aria-expanded={expanded}
+                    aria-label={`${expanded ? '收起' : '查看'} ${item.plugin.moduleName} 回执详情`}
+                    style={{
+                      display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', alignItems: 'center', gap: 8,
+                      padding: 0, border: 0, background: 'transparent', color: ink, cursor: 'pointer', textAlign: 'left',
+                    }}
+                    onClick={() => { setExpandedEventId(expanded ? undefined : item.eventId) }}
+                  >
+                    <strong style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 10.5 }}>
                       {item.plugin.moduleName}{item.plugin.version === undefined ? '' : `#${item.plugin.version}`}
                     </strong>
                     <small style={{ color: item.unread ? accent : muted, fontWeight: item.unread ? 700 : 500 }}>{itemLabel(item)}</small>
-                  </span>
-                  <span style={{ color: '#334155', lineHeight: 1.45 }}>{item.summary}</span>
+                  </button>
                   <span aria-label={`进度 ${current + 1}/5`} style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 3 }}>
                     {[0, 1, 2, 3, 4].map(index => (
-                      <span key={index} style={{ height: 3, borderRadius: 99, background: index <= current ? accent : '#e2e8f0' }} />
+                      <span key={index} style={{ height: 2, borderRadius: 99, background: index <= current ? accent : '#e2e8f0' }} />
                     ))}
                   </span>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 9, color: muted }}>
-                    {item.similarReports !== undefined && <small>同类 {item.similarReports} 条</small>}
-                    {item.recommendedVersion !== undefined && <small>建议版本 {item.recommendedVersion}</small>}
-                    {trackingUrl !== undefined && <a href={trackingUrl} target="_blank" rel="noreferrer" style={{ color: accent }}>公开进展</a>}
-                    {item.localState === 'draft' && (
-                      <button
-                        type="button"
-                        style={{ ...toolbarButton, height: 22, marginLeft: 'auto', border: 0, background: 'transparent' }}
-                        onClick={() => {
-                          setBusy(true)
-                          void discardReceipt(item.eventId).then(() => loadReceipts(false)).then(setBox)
-                            .finally(() => { setBusy(false) })
-                        }}
-                      >移除草稿</button>
-                    )}
-                  </span>
+                  {expanded && <>
+                    <span style={{ color: '#334155', lineHeight: 1.45 }}>{item.summary}</span>
+                    <span style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 9, color: muted }}>
+                      {item.similarReports !== undefined && <small>同类 {item.similarReports} 条</small>}
+                      {item.recommendedVersion !== undefined && <small>建议版本 {item.recommendedVersion}</small>}
+                      {trackingUrl !== undefined && <a href={trackingUrl} target="_blank" rel="noreferrer" style={{ color: accent }}>公开进展</a>}
+                      {item.localState === 'draft' && (
+                        <button
+                          type="button"
+                          style={{ ...toolbarButton, height: 22, marginLeft: 'auto', border: 0, background: 'transparent' }}
+                          onClick={() => {
+                            setBusy(true)
+                            void discardReceipt(item.eventId).then(() => loadReceipts(false)).then(setBox)
+                              .finally(() => { setBusy(false) })
+                          }}
+                        >移除草稿</button>
+                      )}
+                    </span>
+                  </>}
                 </span>
               )
             })}
-          </span>
+          </span>}
         </span>
       )}
     </span>
