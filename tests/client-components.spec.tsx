@@ -81,9 +81,9 @@ describe('rc.6 lightweight experience receipt', () => {
   })
 
   it('uses tiny thumbs as the no-reply failure fallback and previews before sending', async () => {
-    const record: PluginLabRemote['record'] = vi.fn(async () => success({
+    const record: PluginLabRemote['record'] = vi.fn(async (_sessionId, verdict, category) => success({
       ok: true,
-      text: '脱敏 Summary：@example/plugin#1.0.0 在“启动”方面：当前不可用，用户体验为“不好用”。',
+      text: `脱敏 Summary：@example/plugin#1.0.0 · ${verdict} · ${category}`,
     }))
     const join: PluginLabRemote['join'] = vi.fn(async () => success({ ok: true, text: '已提交 · clustered' }))
     const controller = new LabController(remote({
@@ -108,9 +108,25 @@ describe('rc.6 lightweight experience receipt', () => {
     fireEvent.click(screen.getByRole('button', { name: '不好用' }))
     await screen.findByRole('region', { name: '体验回执预览' })
     expect(record).toHaveBeenLastCalledWith(SESSION, 'bad', 'startup')
-    expect(screen.getByText('Agent 分类：启动')).toBeDefined()
+    expect(screen.getByText('反馈大类：启动')).toBeDefined()
     expect(screen.getByText(/脱敏 Summary/)).toBeDefined()
     expect(screen.getByText(/未读取或附带任务、对话正文/)).toBeDefined()
+
+    fireEvent.click(screen.getByRole('button', { name: '修改' }))
+    expect(screen.queryByRole('button', { name: '确认发送' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /一般/ }))
+    fireEvent.change(screen.getByRole('combobox', { name: '问题大类' }), {
+      target: { value: 'compatibility' },
+    })
+    expect(screen.getByText(/在“兼容性”方面/)).toBeDefined()
+    expect(screen.getByText(/用户体验为“一般”/)).toBeDefined()
+    expect(record).toHaveBeenCalledTimes(1)
+    expect(join).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: '应用修改' }))
+    await screen.findByText('反馈大类：兼容性')
+    expect(record).toHaveBeenLastCalledWith(SESSION, 'mixed', 'compatibility')
+    expect(record).toHaveBeenCalledTimes(2)
+    expect(join).not.toHaveBeenCalled()
 
     fireEvent.click(screen.getByRole('button', { name: '确认发送' }))
     await screen.findByText('已提交 · clustered')
