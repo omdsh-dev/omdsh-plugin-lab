@@ -37,6 +37,7 @@ export declare const PLUGIN_LAB_REMOTE_DESCRIPTORS: readonly [{
                 eventId: z.ZodReadonly<z.ZodString>;
                 verdict: z.ZodReadonly<z.ZodUnion<readonly [z.ZodLiteral<"good">, z.ZodLiteral<"mixed">, z.ZodLiteral<"bad">]>>;
                 category: z.ZodReadonly<z.ZodUnion<readonly [z.ZodLiteral<"installation">, z.ZodLiteral<"startup">, z.ZodLiteral<"invocation">, z.ZodLiteral<"compatibility">, z.ZodLiteral<"reliability">, z.ZodLiteral<"performance">, z.ZodLiteral<"result_quality">, z.ZodLiteral<"general">]>>;
+                summary: z.ZodReadonly<z.ZodString>;
                 text: z.ZodReadonly<z.ZodString>;
             }, z.core.$strip>>>;
             text: z.ZodReadonly<z.ZodString>;
@@ -89,6 +90,7 @@ export declare const PLUGIN_LAB_REMOTE_DESCRIPTORS: readonly [{
             ok: z.ZodReadonly<z.ZodBoolean>;
             text: z.ZodReadonly<z.ZodString>;
             eventId: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
+            summary: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
         }, z.core.$strip>;
     };
     readonly sourceLocation: {
@@ -144,11 +146,59 @@ export declare const PLUGIN_LAB_REMOTE_DESCRIPTORS: readonly [{
             ok: z.ZodReadonly<z.ZodBoolean>;
             text: z.ZodReadonly<z.ZodString>;
             eventId: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
+            summary: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
         }, z.core.$strip>;
     };
     readonly sourceLocation: {
         readonly file: "src/panel-service.ts";
         readonly line: 29;
+        readonly column: 3;
+    };
+}, {
+    readonly id: "@oh-my-dsh/plugin-lab#pluginLab/revise";
+    readonly service: "pluginLab";
+    readonly namespace: "pluginLab";
+    readonly method: "revise";
+    readonly invocation: {
+        readonly kind: "direct";
+    };
+    readonly scope: {
+        readonly context: "agent";
+        readonly wire: "agentId";
+    };
+    readonly parameters: readonly [{
+        readonly name: "agent";
+        readonly wire: "agentId";
+        readonly source: "lookup";
+        readonly lookup: "agent";
+        readonly codec: {
+            readonly mode: "strict";
+            readonly typeSymbol: "@deepseek-ai/dsh-session/types#SessionId";
+            readonly schema: z.ZodIntersection<z.ZodString, z.ZodUnknown>;
+        };
+    }, {
+        readonly name: "summary";
+        readonly wire: "summary";
+        readonly source: "json";
+        readonly codec: {
+            readonly mode: "strict";
+            readonly typeSymbol: "string";
+            readonly schema: z.ZodString;
+        };
+    }];
+    readonly result: {
+        readonly mode: "strict";
+        readonly typeSymbol: "@oh-my-dsh/plugin-lab#PluginLabPanelAction";
+        readonly schema: z.ZodObject<{
+            ok: z.ZodReadonly<z.ZodBoolean>;
+            text: z.ZodReadonly<z.ZodString>;
+            eventId: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
+            summary: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
+        }, z.core.$strip>;
+    };
+    readonly sourceLocation: {
+        readonly file: "src/panel-service.ts";
+        readonly line: 50;
         readonly column: 3;
     };
 }, {
@@ -181,6 +231,7 @@ export declare const PLUGIN_LAB_REMOTE_DESCRIPTORS: readonly [{
             ok: z.ZodReadonly<z.ZodBoolean>;
             text: z.ZodReadonly<z.ZodString>;
             eventId: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
+            summary: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
         }, z.core.$strip>;
     };
     readonly sourceLocation: {
@@ -218,6 +269,7 @@ export declare const PLUGIN_LAB_REMOTE_DESCRIPTORS: readonly [{
             ok: z.ZodReadonly<z.ZodBoolean>;
             text: z.ZodReadonly<z.ZodString>;
             eventId: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
+            summary: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
         }, z.core.$strip>;
     };
     readonly sourceLocation: {
@@ -264,6 +316,7 @@ export declare const PLUGIN_LAB_REMOTE_DESCRIPTORS: readonly [{
             ok: z.ZodReadonly<z.ZodBoolean>;
             text: z.ZodReadonly<z.ZodString>;
             eventId: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
+            summary: z.ZodOptional<z.ZodReadonly<z.ZodString>>;
         }, z.core.$strip>;
     };
     readonly sourceLocation: {

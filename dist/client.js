@@ -4152,6 +4152,7 @@ const health = union([
 	literal("error"),
 	literal("unknown")
 ]);
+const summary = string().min(1).max(320);
 const pluginRef = object({
 	moduleName: string(),
 	version: string().optional()
@@ -4160,6 +4161,7 @@ const panelDraft = object({
 	eventId: string().readonly(),
 	verdict: verdict.readonly(),
 	category: category.readonly(),
+	summary: summary.readonly(),
 	text: string().readonly()
 });
 const probeResult = object({
@@ -4173,7 +4175,8 @@ const probeResult = object({
 const actionResult = object({
 	ok: boolean().readonly(),
 	text: string().readonly(),
-	eventId: string().readonly().optional()
+	eventId: string().readonly().optional(),
+	summary: summary.readonly().optional()
 });
 const textResult = string();
 const receiptStatus = union([
@@ -4329,6 +4332,47 @@ const PLUGIN_LAB_REMOTE_DESCRIPTORS = [
 		sourceLocation: {
 			file: "src/panel-service.ts",
 			line: 29,
+			column: 3
+		}
+	},
+	{
+		id: "@oh-my-dsh/plugin-lab#pluginLab/revise",
+		service: "pluginLab",
+		namespace: "pluginLab",
+		method: "revise",
+		invocation: { kind: "direct" },
+		scope: {
+			context: "agent",
+			wire: "agentId"
+		},
+		parameters: [{
+			name: "agent",
+			wire: "agentId",
+			source: "lookup",
+			lookup: "agent",
+			codec: {
+				mode: "strict",
+				typeSymbol: "@deepseek-ai/dsh-session/types#SessionId",
+				schema: agentId
+			}
+		}, {
+			name: "summary",
+			wire: "summary",
+			source: "json",
+			codec: {
+				mode: "strict",
+				typeSymbol: "string",
+				schema: summary
+			}
+		}],
+		result: {
+			mode: "strict",
+			typeSymbol: "@oh-my-dsh/plugin-lab#PluginLabPanelAction",
+			schema: actionResult
+		},
+		sourceLocation: {
+			file: "src/panel-service.ts",
+			line: 50,
 			column: 3
 		}
 	},
@@ -4521,6 +4565,39 @@ const TYPERT_REMOTE = {
 var typert_remote_client_default = TYPERT_REMOTE;
 
 //#endregion
+//#region src/summary.ts
+const CATEGORY_TEXT = {
+	installation: "安装",
+	startup: "启动",
+	invocation: "调用",
+	compatibility: "兼容性",
+	reliability: "稳定性",
+	performance: "性能",
+	result_quality: "结果质量",
+	general: "整体体验"
+};
+const HEALTH_TEXT = {
+	ok: "运行正常",
+	unavailable: "当前不可用",
+	error: "运行错误",
+	unknown: "状态未知"
+};
+const VERDICT_TEXT = {
+	good: "好用",
+	mixed: "一般",
+	bad: "不好用"
+};
+function categoryText(category$1) {
+	return CATEGORY_TEXT[category$1];
+}
+function verdictText(verdict$1) {
+	return VERDICT_TEXT[verdict$1];
+}
+function fixedSummary(plugin, health$1, experience, category$1) {
+	return `${`${plugin.moduleName}${plugin.version === void 0 ? "" : `#${plugin.version}`}`} 在“${CATEGORY_TEXT[category$1]}”方面：${HEALTH_TEXT[health$1]}，用户体验为“${VERDICT_TEXT[experience]}”。`;
+}
+
+//#endregion
 //#region src/client/controller.ts
 const INITIAL_VIEW = Object.freeze({ active: false });
 var LabController = class {
@@ -4556,12 +4633,14 @@ var LabController = class {
 		});
 		const settled = await this.call(() => this.remote.record(this.sessionId, verdict$1, category$1));
 		if (settled.ok && settled.value.ok) {
+			const summary$1 = settled.value.summary ?? (this.view.plugin === void 0 ? settled.value.text : fixedSummary(this.view.plugin, this.view.health ?? "unknown", verdict$1, category$1));
 			this.publish({
 				...this.view,
 				active: true,
 				pending: {
 					verdict: verdict$1,
 					category: category$1,
+					summary: summary$1,
 					phase: "local",
 					text: settled.value.text
 				}
@@ -4572,6 +4651,39 @@ var LabController = class {
 			pending: {
 				verdict: verdict$1,
 				category: category$1,
+				phase: "error",
+				text: settled.ok ? settled.value.text : settled.text
+			}
+		});
+	}
+	async revise(summary$1) {
+		const pending = this.view.pending;
+		if (pending === void 0 || pending.phase !== "local") return;
+		this.publish({
+			...this.view,
+			pending: {
+				...pending,
+				phase: "saving"
+			}
+		});
+		const settled = await this.call(() => this.remote.revise(this.sessionId, summary$1));
+		if (settled.ok && settled.value.ok) {
+			this.publish({
+				...this.view,
+				pending: {
+					...pending,
+					summary: settled.value.summary ?? summary$1,
+					phase: "local",
+					text: settled.value.text
+				}
+			});
+			await this.receipts(false);
+			return;
+		}
+		this.publish({
+			...this.view,
+			pending: {
+				...pending,
 				phase: "error",
 				text: settled.ok ? settled.value.text : settled.text
 			}
@@ -4653,6 +4765,7 @@ var LabController = class {
 		const pending = draft === void 0 ? currentPending?.phase === "joining" || currentPending?.phase === "joined" || currentPending?.phase === "error" ? currentPending : void 0 : {
 			verdict: draft.verdict,
 			category: draft.category,
+			summary: draft.summary,
 			phase: "local",
 			text: draft.text
 		};
@@ -4696,48 +4809,25 @@ var LabController = class {
 
 //#endregion
 //#region src/protocol.ts
-const FEEDBACK_CATEGORIES = [
-	"installation",
-	"startup",
-	"invocation",
-	"compatibility",
-	"reliability",
-	"performance",
-	"result_quality",
-	"general"
+const MAX_FEEDBACK_SUMMARY_LENGTH = 320;
+const SUMMARY_GUARDS = [
+	[/\r|\n|[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u, "摘要只能是一段文字"],
+	[/\b(?:https?:\/\/|www\.)/iu, "摘要不能包含链接"],
+	[/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/u, "摘要不能包含邮箱"],
+	[/(?:^|[\s'"`])(?:\/(?:Users|home|private|tmp|var|etc)\/|[A-Za-z]:[\\/])/u, "摘要不能包含本地路径"],
+	[/\b(?:sk|ghp|github_pat|AKIA|AIza)[-_A-Za-z0-9]{8,}\b/u, "摘要不能包含疑似密钥"],
+	[/\b(?:token|secret|password|api[ _-]?key)\s*[:=]/iu, "摘要不能包含凭据字段"],
+	[/(?:\bat\s+\S+\s*\(|(?:Error|Exception):|\.[cm]?[jt]sx?:\d+(?::\d+)?|\.py:\d+)/u, "摘要不能包含堆栈或异常正文"],
+	[/^\[?\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/u, "摘要不能包含日志行"]
 ];
-
-//#endregion
-//#region src/summary.ts
-const CATEGORY_TEXT = {
-	installation: "安装",
-	startup: "启动",
-	invocation: "调用",
-	compatibility: "兼容性",
-	reliability: "稳定性",
-	performance: "性能",
-	result_quality: "结果质量",
-	general: "整体体验"
-};
-const HEALTH_TEXT = {
-	ok: "运行正常",
-	unavailable: "当前不可用",
-	error: "运行错误",
-	unknown: "状态未知"
-};
-const VERDICT_TEXT = {
-	good: "好用",
-	mixed: "一般",
-	bad: "不好用"
-};
-function categoryText(category$1) {
-	return CATEGORY_TEXT[category$1];
-}
-function verdictText(verdict$1) {
-	return VERDICT_TEXT[verdict$1];
-}
-function fixedSummary(plugin, health$1, experience, category$1) {
-	return `${`${plugin.moduleName}${plugin.version === void 0 ? "" : `#${plugin.version}`}`} 在“${CATEGORY_TEXT[category$1]}”方面：${HEALTH_TEXT[health$1]}，用户体验为“${VERDICT_TEXT[experience]}”。`;
+/** Normalize and reject common pasted-secret, path, log and stack shapes before storage or upload. */
+function normalizeFeedbackSummary(value) {
+	if (typeof value !== "string") throw new TypeError("摘要格式无效");
+	const normalized = value.normalize("NFC").trim().replace(/[\t ]+/gu, " ");
+	if (normalized.length === 0) throw new TypeError("摘要不能为空");
+	if (normalized.length > MAX_FEEDBACK_SUMMARY_LENGTH) throw new TypeError(`摘要不能超过 ${MAX_FEEDBACK_SUMMARY_LENGTH} 个字符`);
+	for (const [pattern, message] of SUMMARY_GUARDS) if (pattern.test(normalized)) throw new TypeError(message);
+	return normalized;
 }
 
 //#endregion
@@ -4784,26 +4874,15 @@ const fieldLabel = {
 	fontWeight: 650,
 	letterSpacing: ".03em"
 };
-const choiceButton = {
-	minWidth: 0,
-	height: 28,
-	padding: "0 8px",
-	border: "1px solid #dbe3ea",
-	borderRadius: 7,
-	background: "#ffffff",
-	color: "#475569",
-	cursor: "pointer",
-	fontSize: 11
-};
 function pluginLabel(view) {
 	const plugin = view.plugin;
 	if (plugin === void 0) return "本次插件";
 	return `${plugin.moduleName}${plugin.version === void 0 ? "" : `#${plugin.version}`}`;
 }
-function ExperienceReceiptControls({ view, record, join, cancel, dismiss, surface }) {
+function ExperienceReceiptControls({ view, record, revise, join, cancel, dismiss, surface }) {
 	const [editing, setEditing] = (0, react.useState)(false);
-	const [editVerdict, setEditVerdict] = (0, react.useState)("mixed");
-	const [editCategory, setEditCategory] = (0, react.useState)("general");
+	const [editSummary, setEditSummary] = (0, react.useState)("");
+	const [editError, setEditError] = (0, react.useState)();
 	const pending = view.pending;
 	const category$1 = view.suggestedCategory ?? "general";
 	const categoryName = categoryText(category$1);
@@ -4853,16 +4932,22 @@ function ExperienceReceiptControls({ view, record, join, cancel, dismiss, surfac
 	});
 	const working = pending.phase === "saving" || pending.phase === "joining";
 	const beginEditing = () => {
-		setEditVerdict(pending.verdict);
-		setEditCategory(pending.category);
+		setEditSummary(pending.summary ?? "");
+		setEditError(void 0);
 		setEditing(true);
 	};
 	const applyEditing = () => {
-		record(editVerdict, editCategory).then(() => {
-			setEditing(false);
-		});
+		try {
+			const normalized = normalizeFeedbackSummary(editSummary);
+			setEditSummary(normalized);
+			setEditError(void 0);
+			revise(normalized).then(() => {
+				setEditing(false);
+			});
+		} catch (error) {
+			setEditError(error instanceof Error ? error.message : "摘要格式无效");
+		}
 	};
-	const editedSummary = view.plugin === void 0 ? void 0 : fixedSummary(view.plugin, view.health ?? "unknown", editVerdict, editCategory);
 	return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
 		role: "region",
 		"aria-label": "体验回执预览",
@@ -4881,92 +4966,72 @@ function ExperienceReceiptControls({ view, record, join, cancel, dismiss, surfac
 			},
 			children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("strong", { children: pending.phase === "joined" ? "回执已发送" : editing ? "修改回执" : "发送前预览" }), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("small", {
 				style: { color: "#64748b" },
-				children: editing ? "有限字段" : `反馈大类：${categoryText(pending.category)}`
+				children: editing ? "用户编辑" : `反馈大类：${categoryText(pending.category)}`
 			})]
 		}), editing && pending.phase === "local" ? /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [
-			/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
-				style: {
-					display: "grid",
-					gap: 5
-				},
-				children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("small", {
-					style: fieldLabel,
-					children: "体验"
-				}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-					style: {
-						display: "grid",
-						gridTemplateColumns: "repeat(3, 1fr)",
-						gap: 4
-					},
-					children: [
-						"good",
-						"mixed",
-						"bad"
-					].map((verdict$1) => /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("button", {
-						type: "button",
-						"aria-pressed": editVerdict === verdict$1,
-						style: editVerdict === verdict$1 ? {
-							...choiceButton,
-							borderColor: "#0f766e",
-							background: "#ecfdf5",
-							color: "#0f5f58",
-							fontWeight: 700
-						} : choiceButton,
-						onClick: () => {
-							setEditVerdict(verdict$1);
-						},
-						children: [verdict$1 === "good" ? "👍 " : verdict$1 === "bad" ? "👎 " : "— ", verdictText(verdict$1)]
-					}, verdict$1))
-				})]
-			}),
 			/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("label", {
 				style: {
 					display: "grid",
 					gap: 5
 				},
-				children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("small", {
-					style: fieldLabel,
-					children: "问题大类"
-				}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("select", {
-					"aria-label": "问题大类",
-					value: editCategory,
+				children: [/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+					style: {
+						display: "flex",
+						justifyContent: "space-between",
+						alignItems: "baseline",
+						gap: 8
+					},
+					children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("small", {
+						style: fieldLabel,
+						children: "脱敏 Summary"
+					}), /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("small", {
+						style: { color: editSummary.length > MAX_FEEDBACK_SUMMARY_LENGTH ? "#be123c" : "#94a3b8" },
+						children: [
+							editSummary.length,
+							"/",
+							MAX_FEEDBACK_SUMMARY_LENGTH
+						]
+					})]
+				}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("textarea", {
+					"aria-label": "编辑脱敏 Summary",
+					value: editSummary,
+					maxLength: MAX_FEEDBACK_SUMMARY_LENGTH,
+					rows: 3,
+					autoFocus: true,
 					onChange: (event) => {
-						setEditCategory(event.currentTarget.value);
+						setEditSummary(event.currentTarget.value);
+						setEditError(void 0);
 					},
 					style: {
 						width: "100%",
-						height: 30,
-						padding: "0 8px",
-						border: "1px solid #dbe3ea",
-						borderRadius: 7,
+						minHeight: 68,
+						resize: "vertical",
+						boxSizing: "border-box",
+						padding: "8px 9px",
+						border: `1px solid ${editError === void 0 ? "#cbd5e1" : "#e11d48"}`,
+						borderRadius: 8,
 						background: "#fff",
-						color: "#334155",
-						fontSize: 11.5,
+						color: "#1e293b",
+						font: "inherit",
+						lineHeight: 1.5,
 						outlineColor: "#0f766e"
-					},
-					children: FEEDBACK_CATEGORIES.map((value) => /* @__PURE__ */ (0, react_jsx_runtime.jsx)("option", {
-						value,
-						children: categoryText(value)
-					}, value))
+					}
 				})]
 			}),
-			/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
-				style: {
-					display: "grid",
-					gap: 3,
-					padding: "7px 8px",
-					borderLeft: "2px solid #0f766e",
-					background: "#f8fafc",
-					color: "#334155"
-				},
-				children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("small", {
-					style: fieldLabel,
-					children: "更新后 Summary"
-				}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { children: editedSummary ?? "反馈对象状态暂不可用。" })]
+			editError !== void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("small", {
+				role: "alert",
+				style: { color: "#be123c" },
+				children: editError
 			}),
-			/* @__PURE__ */ (0, react_jsx_runtime.jsx)("small", {
+			/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("small", {
 				style: { color: "#64748b" },
-				children: "插件与运行状态来自 Host，不可手工改写；对象不对时请取消后重选。"
+				children: [
+					"聚合标签：",
+					verdictText(pending.verdict),
+					" · ",
+					categoryText(pending.category),
+					"。请勿粘贴日志、路径、密钥或任务内容。"
+				]
 			}),
 			/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
 				style: {
@@ -4994,11 +5059,11 @@ function ExperienceReceiptControls({ view, record, join, cancel, dismiss, surfac
 					whiteSpace: "pre-wrap",
 					color: "#334155"
 				},
-				children: pending.phase === "saving" ? "正在本地生成固定模板 Summary…" : pending.phase === "joining" ? "正在发送你看到的有限字段…" : pending.text
+				children: pending.phase === "saving" ? "正在本地生成固定模板 Summary…" : pending.phase === "joining" ? "正在发送你看到的有限字段…" : pending.phase === "local" ? `脱敏 Summary：${pending.summary ?? pending.text ?? ""}` : pending.text
 			}),
 			(pending.phase === "saving" || pending.phase === "local") && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("small", {
 				style: { color: "#64748b" },
-				children: "未读取或附带任务、对话正文、Prompt、回复、日志、文件或报错详情。"
+				children: "仅发送这句摘要和只读标签；不自动附带任务、对话、日志、文件或报错详情。"
 			}),
 			/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
 				style: {
@@ -5126,7 +5191,7 @@ function safeTrackingUrl(value) {
 	return value?.startsWith("https://") ? value : void 0;
 }
 /** One persistent receipt entry for selection, feedback and progress. */
-function PluginLabButton({ useSession, usePluginLab, record, join, cancel, dismiss, selectPlugin, listPlugins, loadReceipts, discardReceipt }) {
+function PluginLabButton({ useSession, usePluginLab, record, revise, join, cancel, dismiss, selectPlugin, listPlugins, loadReceipts, discardReceipt }) {
 	const view = usePluginLab((value) => value);
 	const latest = useSession((snapshot) => latestAssistantAnchor(snapshot.nodes));
 	const [open, setOpen] = (0, react.useState)(false);
@@ -5249,6 +5314,7 @@ function PluginLabButton({ useSession, usePluginLab, record, join, cancel, dismi
 					children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)(ExperienceReceiptControls, {
 						view,
 						record,
+						revise,
 						join,
 						cancel,
 						dismiss,
@@ -5594,7 +5660,7 @@ function PluginLabButton({ useSession, usePluginLab, record, join, cancel, dismi
 //#endregion
 //#region src/client/ExperienceResultCard.tsx
 /** Tiny feedback controls attached only to the first finalized reply after trial activation. */
-function ExperienceResultCard({ messageId, useSession, usePluginLab, record, join, cancel, refresh, dismiss }) {
+function ExperienceResultCard({ messageId, useSession, usePluginLab, record, revise, join, cancel, refresh, dismiss }) {
 	const view = usePluginLab((value) => value);
 	const anchor = useSession((snapshot) => latestAssistantAnchor(snapshot.nodes));
 	const belongsToTrial = view.activatedAt !== void 0 && anchor !== void 0 && anchor.time >= view.activatedAt && anchor.messageId === messageId;
@@ -5609,6 +5675,7 @@ function ExperienceResultCard({ messageId, useSession, usePluginLab, record, joi
 	return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(ExperienceReceiptControls, {
 		view,
 		record,
+		revise,
 		join,
 		cancel,
 		dismiss,
@@ -5800,6 +5867,7 @@ function apply(ctx) {
 			return {
 				hooks: { pluginLab: controller },
 				record: (outcome, category$1) => controller.record(outcome, category$1),
+				revise: (summary$1) => controller.revise(summary$1),
 				join: () => controller.join(),
 				cancel: async () => {
 					await controller.cancel();
@@ -5821,6 +5889,7 @@ function apply(ctx) {
 			return {
 				hooks: { pluginLab: controller },
 				record: (outcome, category$1) => controller.record(outcome, category$1),
+				revise: (summary$1) => controller.revise(summary$1),
 				join: () => controller.join(),
 				cancel: async () => {
 					await controller.cancel();

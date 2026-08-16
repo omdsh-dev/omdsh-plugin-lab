@@ -4,7 +4,7 @@ const port = Number(process.env.PORT ?? 8787)
 const reports = new Map()
 const allowed = new Set([
   'schemaVersion', 'type', 'eventId', 'plugin', 'health', 'experience', 'category',
-  'source', 'retestOfReceiptId',
+  'summary', 'summarySource', 'source', 'retestOfReceiptId',
 ])
 const categories = new Set([
   'installation', 'startup', 'invocation', 'compatibility',
@@ -24,8 +24,14 @@ const server = createServer((request, response) => {
   request.on('end', () => {
     try {
       const event = JSON.parse(raw)
-      if (event?.schemaVersion !== 3 || event?.type !== 'feedback.signal') throw new TypeError()
+      if ((event?.schemaVersion !== 3 && event?.schemaVersion !== 4) || event?.type !== 'feedback.signal') throw new TypeError()
       if (Object.keys(event).some(key => !allowed.has(key))) throw new TypeError()
+      if (event.schemaVersion === 3 && ('summary' in event || 'summarySource' in event)) throw new TypeError()
+      if (event.schemaVersion === 4) {
+        if (typeof event.summary !== 'string' || event.summary.length === 0 || event.summary.length > 320) throw new TypeError()
+        if (event.summarySource !== 'template' && event.summarySource !== 'user_edited') throw new TypeError()
+        if (/\r|\n|https?:\/\/|\/Users\/|\b(?:token|secret|password|api[ _-]?key)\s*[:=]/iu.test(event.summary)) throw new TypeError()
+      }
       if (event?.source !== 'user_confirmed') throw new TypeError()
       if (!categories.has(event?.category)) throw new TypeError()
       const plugin = event?.plugin?.moduleName

@@ -1,9 +1,9 @@
 import { createServer } from 'node:http'
-import { mkdtempSync, readFileSync, statSync } from 'node:fs'
+import { appendFileSync, mkdtempSync, readFileSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import type { FeedbackEventV3, LocalFeedbackRecord } from '../src/protocol.js'
+import type { FeedbackEventV4, LocalFeedbackRecord } from '../src/protocol.js'
 import { FeedbackStore } from '../src/storage.js'
 import { ExperienceUploader } from '../src/uploader.js'
 
@@ -14,14 +14,16 @@ afterEach(async () => {
 })
 
 function record(): LocalFeedbackRecord {
-  const event: FeedbackEventV3 = {
-    schemaVersion: 3,
+  const event: FeedbackEventV4 = {
+    schemaVersion: 4,
     type: 'feedback.signal',
     eventId: crypto.randomUUID(),
     plugin: { moduleName: 'plugin', version: '1.0.0' },
     health: 'error',
     experience: 'bad',
     category: 'reliability',
+    summary: '插件启动失败，无法继续使用。',
+    summarySource: 'user_edited',
     source: 'user_confirmed',
   }
   return { event, requestedShare: false }
@@ -35,7 +37,8 @@ describe('strict local outbox and uploader', () => {
     store.append(value)
     expect(statSync(store.eventsPath).mode & 0o777).toBe(0o600)
     expect(Object.keys(store).sort()).toEqual([
-      'dataDir', 'draftDiscardsPath', 'eventsPath', 'receiptSeenPath', 'receiptsPath', 'shareRequestsPath',
+      'dataDir', 'draftDiscardsPath', 'eventsPath', 'legacyEventsPath',
+      'receiptSeenPath', 'receiptsPath', 'shareRequestsPath',
     ])
     const stored = readFileSync(store.eventsPath, 'utf8')
     expect(stored).not.toContain('participant')
@@ -58,6 +61,29 @@ describe('strict local outbox and uploader', () => {
     expect(store.records()).toHaveLength(1)
     expect(readFileSync(store.draftDiscardsPath, 'utf8')).toContain(value.event.eventId)
     expect(store.discardDraft(value.event.eventId)).toBe(false)
+  })
+
+  it('keeps legacy v3 drafts visible while writing new records only to v4', () => {
+    const root = mkdtempSync(join(tmpdir(), 'omdsh-plugin-lab-'))
+    const store = new FeedbackStore(join(root, 'data'))
+    const legacy: LocalFeedbackRecord = {
+      event: {
+        schemaVersion: 3,
+        type: 'feedback.signal',
+        eventId: crypto.randomUUID(),
+        plugin: { moduleName: '@example/legacy' },
+        health: 'ok',
+        experience: 'good',
+        category: 'general',
+        source: 'user_confirmed',
+      },
+      requestedShare: false,
+    }
+    appendFileSync(store.legacyEventsPath, `${JSON.stringify(legacy)}\n`)
+    const current = record()
+    store.append(current)
+    expect(store.visibleRecords().map(row => row.event.schemaVersion)).toEqual([3, 4])
+    expect(readFileSync(store.eventsPath, 'utf8')).not.toContain('@example/legacy')
   })
 
   it('posts the exact closed packet and persists a report-scoped receipt', async () => {

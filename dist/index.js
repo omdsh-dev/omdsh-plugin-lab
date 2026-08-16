@@ -3,10 +3,10 @@ import z from '@deepseek-ai/schemastery';
 import { createAgentAssessmentTool, createAgentPrepareTool, createAgentPreviewTool, } from './agent-tool.js';
 import { healthText, probeLoaderHealth } from './health.js';
 import { JOIN_USAGE, parseJoinTarget, parseReceiptId, parseResultInput, parseStartInput, RESULT_USAGE, RETEST_USAGE, START_USAGE, } from './input.js';
-import { FEEDBACK_SCHEMA_VERSION, FEEDBACK_CATEGORIES, } from './protocol.js';
+import { FEEDBACK_SCHEMA_VERSION, FEEDBACK_CATEGORIES, normalizeFeedbackSummary, } from './protocol.js';
 import { PluginLabPanelService } from './panel-service.js';
 import { FeedbackStore } from './storage.js';
-import { fixedSummary, renderUploadPreview, suggestedCategory } from './summary.js';
+import { eventSummary, fixedSummary, renderUploadPreview, suggestedCategory } from './summary.js';
 import { ExperienceUploader } from './uploader.js';
 export const name = 'omdsh-plugin-lab';
 export const inject = ['commands'];
@@ -132,6 +132,7 @@ export function apply(ctx, rawConfig) {
                     eventId: draft.event.eventId,
                     verdict: draft.event.experience,
                     category: draft.event.category,
+                    summary: eventSummary(draft.event),
                     text: renderUploadPreview(draft.event).join('\n'),
                 },
             }),
@@ -148,20 +149,60 @@ export function apply(ctx, rawConfig) {
         const previousDraftId = draftsBySession.get(key);
         if (previousDraftId !== undefined)
             store.discardDraft(previousDraftId);
+        const status = health(ctx, state.plugin);
+        const summary = fixedSummary(state.plugin, status, verdict, category);
         const event = {
             schemaVersion: FEEDBACK_SCHEMA_VERSION,
             type: 'feedback.signal',
             eventId: crypto.randomUUID(),
             plugin: state.plugin,
-            health: health(ctx, state.plugin),
+            health: status,
             experience: verdict,
             category,
+            summary,
+            summarySource: 'template',
             source: 'user_confirmed',
             ...state.retestOfReceiptId === undefined ? {} : { retestOfReceiptId: state.retestOfReceiptId },
         };
         store.append({ event, requestedShare: false });
         draftsBySession.set(key, event.eventId);
-        return { ok: true, text: renderUploadPreview(event).join('\n'), eventId: event.eventId };
+        return { ok: true, text: renderUploadPreview(event).join('\n'), eventId: event.eventId, summary };
+    };
+    const reviseFeedback = (agent, input) => {
+        const key = agentKey(agent);
+        const previousId = draftsBySession.get(key);
+        if (previousId === undefined)
+            return { ok: false, text: '找不到可修改的本地草稿。' };
+        const previous = store.record(previousId);
+        if (previous === undefined)
+            return { ok: false, text: '找不到可修改的本地草稿。' };
+        let summary;
+        try {
+            summary = normalizeFeedbackSummary(input);
+        }
+        catch (error) {
+            return { ok: false, text: error instanceof Error ? error.message : '摘要格式无效' };
+        }
+        const source = previous.event;
+        const event = {
+            schemaVersion: FEEDBACK_SCHEMA_VERSION,
+            type: 'feedback.signal',
+            eventId: crypto.randomUUID(),
+            plugin: source.plugin,
+            health: source.health,
+            experience: source.experience,
+            category: source.category,
+            summary,
+            summarySource: summary === fixedSummary(source.plugin, source.health, source.experience, source.category)
+                ? 'template'
+                : 'user_edited',
+            source: 'user_confirmed',
+            ...source.retestOfReceiptId === undefined ? {} : { retestOfReceiptId: source.retestOfReceiptId },
+        };
+        store.discardDraft(previousId);
+        store.append({ event, requestedShare: false });
+        draftsBySession.set(key, event.eventId);
+        return { ok: true, text: renderUploadPreview(event).join('\n'), eventId: event.eventId, summary };
     };
     const prepareFeedback = (agent, verdict) => {
         if (agent === undefined)
@@ -225,7 +266,7 @@ export function apply(ctx, rawConfig) {
             return {
                 eventId: event.eventId,
                 plugin: event.plugin,
-                summary: fixedSummary(event.plugin, event.health, event.experience, event.category),
+                summary: eventSummary(event),
                 localState: receipt !== undefined ? 'submitted' : queued.has(event.eventId) ? 'queued' : 'draft',
                 ...(receipt?.status === undefined ? {} : { status: receipt.status }),
                 ...(receipt?.similarReports === undefined ? {} : { similarReports: receipt.similarReports }),
@@ -259,7 +300,7 @@ export function apply(ctx, rawConfig) {
         ];
         for (const record of drafts.slice(-3)) {
             const event = record.event;
-            lines.push('', `尚未发送：${fixedSummary(event.plugin, event.health, event.experience, event.category)}`);
+            lines.push('', `尚未发送：${eventSummary(event)}`);
         }
         for (const receipt of unread) {
             lines.push('', ...renderReceipt(receipt));
@@ -312,6 +353,7 @@ export function apply(ctx, rawConfig) {
         probe: panelProbe,
         select: selectTrial,
         record: recordFeedback,
+        revise: reviseFeedback,
         join: async (agent) => {
             const key = agentKey(agent);
             const eventId = draftsBySession.get(key);
@@ -428,9 +470,10 @@ export function apply(ctx, rawConfig) {
             `结构化分享：${uploader === undefined ? '未启用' : '只能由用户逐次运行 /omdsh-join 触发'}`,
             '探活：仅本地读取 DSH Host 的 Loader/Fiber 生命周期枚举，不访问插件对象或网络。',
             'Agent：只能读取公开插件名/版本和 Host 状态枚举，按固定规则建议大类；不读 Session 内容、日志或文件。',
-            'Summary：只由有限枚举通过固定模板生成，服务端重建同一句，不接受自由文本 Summary。',
-            '可发送字段：schemaVersion、type、随机单次 eventId、公开插件 ID/版本、health、experience、category、source。',
-            '绝不读取或发送：日志、异常、堆栈、崩溃指纹、Prompt、回复正文、Tool 数据、文件、路径、环境、时间、用户/设备/安装/Session ID。',
+            'Summary：默认由固定模板生成；用户可在发送前手动编辑一段短摘要。Agent 不能填写自由文本。',
+            '可发送字段：schemaVersion、type、随机单次 eventId、公开插件 ID/版本、health、experience、category、用户所见 summary、summarySource、source。',
+            '摘要会在本地和服务端拒绝常见日志、异常、堆栈、密钥、链接、邮箱和路径形态，但不能保证识别所有敏感文本。',
+            '绝不自动读取或发送：日志、Prompt、回复正文、Tool 数据、文件、路径、环境、时间、用户/设备/安装/Session ID。',
             '网络仍会自然暴露传输元数据，因此本插件不宣称匿名；服务端必须禁止持久化 IP、User-Agent 和请求体日志。',
             `本地最小化数据：${store.dataDir}`,
         ].join('\n'),
@@ -444,7 +487,7 @@ export function apply(ctx, rawConfig) {
         const suffix = receipt?.status === undefined ? '已提交' : `已提交 · ${receipt.status}`;
         return {
             kind: 'success',
-            text: `${fixedSummary(event.plugin, event.health, event.experience, event.category)} ${suffix}`,
+            text: `${eventSummary(event)} ${suffix}`,
         };
     };
     ctx.commands.register({
@@ -490,7 +533,7 @@ export function apply(ctx, rawConfig) {
     });
     ctx.commands.register({
         name: 'omdsh-retest',
-        description: '从问题回执开始一次零内容复测',
+        description: '从问题回执开始一次无日志复测',
         input: { hint: '<receipt-id> <public-module>[#version]' },
         recordInput: false,
         handler: startRetest,

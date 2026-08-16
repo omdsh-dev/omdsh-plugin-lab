@@ -18,6 +18,7 @@ interface PluginLabRemoteNamespace {
     verdict: ExperienceVerdict,
     category: FeedbackCategory,
   ) => Promise<RemoteResult<PluginLabPanelAction>>
+  revise: (agentId: SessionId, summary: string) => Promise<RemoteResult<PluginLabPanelAction>>
   join: (agentId: SessionId) => Promise<RemoteResult<PluginLabPanelAction>>
   cancel: (agentId: SessionId) => Promise<RemoteResult<PluginLabPanelAction>>
   discard: (agentId: SessionId, eventId: string) => Promise<RemoteResult<PluginLabPanelAction>>
@@ -33,6 +34,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'pluginLab/probe': PluginLabRemoteNamespace['probe']
     'pluginLab/select': PluginLabRemoteNamespace['select']
     'pluginLab/record': PluginLabRemoteNamespace['record']
+    'pluginLab/revise': PluginLabRemoteNamespace['revise']
     'pluginLab/join': PluginLabRemoteNamespace['join']
     'pluginLab/cancel': PluginLabRemoteNamespace['cancel']
     'pluginLab/discard': PluginLabRemoteNamespace['discard']

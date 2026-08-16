@@ -19,14 +19,17 @@ export type ClusterStatus =
   | 'confirmed'
   | 'closed'
 
-/** Exact accepted v3 packet after fail-closed validation. */
+/** Accepted legacy v3 or bounded-summary v4 packet after fail-closed validation. */
 export interface AcceptedEvent {
+  readonly schemaVersion: 3 | 4
   readonly eventId: string
   readonly pluginModule: string
   readonly pluginVersion?: string
   readonly health: HealthStatus
   readonly experience: ExperienceVerdict
   readonly category: FeedbackCategory
+  readonly summary: string
+  readonly summarySource: 'template' | 'user_edited'
   readonly source: 'user_confirmed'
   readonly retestOfReceiptId?: string
 }
@@ -41,7 +44,7 @@ export interface ClusterRecord {
   readonly category: FeedbackCategory
   readonly symptom: string
   readonly status: ClusterStatus
-  /** Number of reports, not unique users: strict v3 has no stable participant id. */
+  /** Number of reports, not unique users: the protocol has no stable participant id. */
   readonly similarReports: number
   readonly githubIssueUrl?: string
   readonly recommendedVersion?: string

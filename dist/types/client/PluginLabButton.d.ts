@@ -11,6 +11,7 @@ export interface PluginLabInjected {
         pluginLab: LabController;
     };
     record: (verdict: ExperienceVerdict, category: FeedbackCategory) => Promise<void>;
+    revise: (summary: string) => Promise<void>;
     join: () => Promise<void>;
     cancel: () => Promise<void>;
     dismiss: () => void;
@@ -21,4 +22,4 @@ export interface PluginLabInjected {
 }
 export type PluginLabButtonProps = PropsRuntime<'conversation.input.dock'> & InjectFace<PluginLabInjected>;
 /** One persistent receipt entry for selection, feedback and progress. */
-export declare function PluginLabButton({ useSession, usePluginLab, record, join, cancel, dismiss, selectPlugin, listPlugins, loadReceipts, discardReceipt, }: PluginLabButtonProps): import("react").JSX.Element;
+export declare function PluginLabButton({ useSession, usePluginLab, record, revise, join, cancel, dismiss, selectPlugin, listPlugins, loadReceipts, discardReceipt, }: PluginLabButtonProps): import("react").JSX.Element;

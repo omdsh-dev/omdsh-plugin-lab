@@ -64,14 +64,15 @@ export class PostgresRepository implements ExperienceRepository {
       )
       const inserted = await client.query(
         `INSERT INTO feedback_events_v3
-          (event_id, plugin_module, plugin_version, health, experience, category, source,
-           retest_of_receipt_id, cluster_key, created_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+          (event_id, plugin_module, plugin_version, health, experience, category, summary, summary_source,
+           source, retest_of_receipt_id, cluster_key, created_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
          ON CONFLICT (event_id) DO NOTHING
          RETURNING event_id`,
         [
           event.eventId, event.pluginModule, event.pluginVersion ?? null, event.health,
-          event.experience, event.category, event.source, event.retestOfReceiptId ?? null, key, now,
+          event.experience, event.category, event.summary, event.summarySource,
+          event.source, event.retestOfReceiptId ?? null, key, now,
         ],
       )
       if (inserted.rowCount === 0) {

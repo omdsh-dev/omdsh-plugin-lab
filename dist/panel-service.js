@@ -18,6 +18,9 @@ export class PluginLabPanelService extends TypertRemoteService {
     record(agent, verdict, category) {
         return this.handlers.record(agent, verdict, category);
     }
+    revise(agent, summary) {
+        return this.handlers.revise(agent, summary);
+    }
     join(agent) {
         return this.handlers.join(agent);
     }
@@ -34,7 +37,7 @@ export class PluginLabPanelService extends TypertRemoteService {
         return this.handlers.inbox(agent);
     }
 }
-for (const method of ['probe', 'select', 'record', 'join', 'cancel', 'discard', 'receipts', 'inbox']) {
+for (const method of ['probe', 'select', 'record', 'revise', 'join', 'cancel', 'discard', 'receipts', 'inbox']) {
     Remote(PluginLabPanelService.prototype[method], {
         kind: 'method',
         name: method,

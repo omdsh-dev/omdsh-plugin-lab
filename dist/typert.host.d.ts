@@ -40,6 +40,7 @@ export declare const TYPERT: {
                     eventId: import("zod").ZodReadonly<import("zod").ZodString>;
                     verdict: import("zod").ZodReadonly<import("zod").ZodUnion<readonly [import("zod").ZodLiteral<"good">, import("zod").ZodLiteral<"mixed">, import("zod").ZodLiteral<"bad">]>>;
                     category: import("zod").ZodReadonly<import("zod").ZodUnion<readonly [import("zod").ZodLiteral<"installation">, import("zod").ZodLiteral<"startup">, import("zod").ZodLiteral<"invocation">, import("zod").ZodLiteral<"compatibility">, import("zod").ZodLiteral<"reliability">, import("zod").ZodLiteral<"performance">, import("zod").ZodLiteral<"result_quality">, import("zod").ZodLiteral<"general">]>>;
+                    summary: import("zod").ZodReadonly<import("zod").ZodString>;
                     text: import("zod").ZodReadonly<import("zod").ZodString>;
                 }, import("zod/v4/core").$strip>>>;
                 text: import("zod").ZodReadonly<import("zod").ZodString>;
@@ -92,6 +93,7 @@ export declare const TYPERT: {
                 ok: import("zod").ZodReadonly<import("zod").ZodBoolean>;
                 text: import("zod").ZodReadonly<import("zod").ZodString>;
                 eventId: import("zod").ZodOptional<import("zod").ZodReadonly<import("zod").ZodString>>;
+                summary: import("zod").ZodOptional<import("zod").ZodReadonly<import("zod").ZodString>>;
             }, import("zod/v4/core").$strip>;
         };
         readonly sourceLocation: {
@@ -147,11 +149,59 @@ export declare const TYPERT: {
                 ok: import("zod").ZodReadonly<import("zod").ZodBoolean>;
                 text: import("zod").ZodReadonly<import("zod").ZodString>;
                 eventId: import("zod").ZodOptional<import("zod").ZodReadonly<import("zod").ZodString>>;
+                summary: import("zod").ZodOptional<import("zod").ZodReadonly<import("zod").ZodString>>;
             }, import("zod/v4/core").$strip>;
         };
         readonly sourceLocation: {
             readonly file: "src/panel-service.ts";
             readonly line: 29;
+            readonly column: 3;
+        };
+    }, {
+        readonly id: "@oh-my-dsh/plugin-lab#pluginLab/revise";
+        readonly service: "pluginLab";
+        readonly namespace: "pluginLab";
+        readonly method: "revise";
+        readonly invocation: {
+            readonly kind: "direct";
+        };
+        readonly scope: {
+            readonly context: "agent";
+            readonly wire: "agentId";
+        };
+        readonly parameters: readonly [{
+            readonly name: "agent";
+            readonly wire: "agentId";
+            readonly source: "lookup";
+            readonly lookup: "agent";
+            readonly codec: {
+                readonly mode: "strict";
+                readonly typeSymbol: "@deepseek-ai/dsh-session/types#SessionId";
+                readonly schema: import("zod").ZodIntersection<import("zod").ZodString, import("zod").ZodUnknown>;
+            };
+        }, {
+            readonly name: "summary";
+            readonly wire: "summary";
+            readonly source: "json";
+            readonly codec: {
+                readonly mode: "strict";
+                readonly typeSymbol: "string";
+                readonly schema: import("zod").ZodString;
+            };
+        }];
+        readonly result: {
+            readonly mode: "strict";
+            readonly typeSymbol: "@oh-my-dsh/plugin-lab#PluginLabPanelAction";
+            readonly schema: import("zod").ZodObject<{
+                ok: import("zod").ZodReadonly<import("zod").ZodBoolean>;
+                text: import("zod").ZodReadonly<import("zod").ZodString>;
+                eventId: import("zod").ZodOptional<import("zod").ZodReadonly<import("zod").ZodString>>;
+                summary: import("zod").ZodOptional<import("zod").ZodReadonly<import("zod").ZodString>>;
+            }, import("zod/v4/core").$strip>;
+        };
+        readonly sourceLocation: {
+            readonly file: "src/panel-service.ts";
+            readonly line: 50;
             readonly column: 3;
         };
     }, {
@@ -184,6 +234,7 @@ export declare const TYPERT: {
                 ok: import("zod").ZodReadonly<import("zod").ZodBoolean>;
                 text: import("zod").ZodReadonly<import("zod").ZodString>;
                 eventId: import("zod").ZodOptional<import("zod").ZodReadonly<import("zod").ZodString>>;
+                summary: import("zod").ZodOptional<import("zod").ZodReadonly<import("zod").ZodString>>;
             }, import("zod/v4/core").$strip>;
         };
         readonly sourceLocation: {
@@ -221,6 +272,7 @@ export declare const TYPERT: {
                 ok: import("zod").ZodReadonly<import("zod").ZodBoolean>;
                 text: import("zod").ZodReadonly<import("zod").ZodString>;
                 eventId: import("zod").ZodOptional<import("zod").ZodReadonly<import("zod").ZodString>>;
+                summary: import("zod").ZodOptional<import("zod").ZodReadonly<import("zod").ZodString>>;
             }, import("zod/v4/core").$strip>;
         };
         readonly sourceLocation: {
@@ -267,6 +319,7 @@ export declare const TYPERT: {
                 ok: import("zod").ZodReadonly<import("zod").ZodBoolean>;
                 text: import("zod").ZodReadonly<import("zod").ZodString>;
                 eventId: import("zod").ZodOptional<import("zod").ZodReadonly<import("zod").ZodString>>;
+                summary: import("zod").ZodOptional<import("zod").ZodReadonly<import("zod").ZodString>>;
             }, import("zod/v4/core").$strip>;
         };
         readonly sourceLocation: {

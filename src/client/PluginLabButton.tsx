@@ -16,6 +16,7 @@ export interface PluginChoice {
 export interface PluginLabInjected {
   hooks: { pluginLab: LabController }
   record: (verdict: ExperienceVerdict, category: FeedbackCategory) => Promise<void>
+  revise: (summary: string) => Promise<void>
   join: () => Promise<void>
   cancel: () => Promise<void>
   dismiss: () => void
@@ -98,7 +99,7 @@ function safeTrackingUrl(value: string | undefined): string | undefined {
 
 /** One persistent receipt entry for selection, feedback and progress. */
 export function PluginLabButton({
-  useSession, usePluginLab, record, join, cancel, dismiss,
+  useSession, usePluginLab, record, revise, join, cancel, dismiss,
   selectPlugin, listPlugins, loadReceipts, discardReceipt,
 }: PluginLabButtonProps) {
   const view = usePluginLab(value => value)
@@ -191,6 +192,7 @@ export function PluginLabButton({
               <ExperienceReceiptControls
                 view={view}
                 record={record}
+                revise={revise}
                 join={join}
                 cancel={cancel}
                 dismiss={dismiss}

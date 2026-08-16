@@ -14,6 +14,7 @@ export interface PluginLabPanelHandlers {
   probe(agent: Agent): PluginLabPanelProbe
   select(agent: Agent, plugin: TrialPluginRef): PluginLabPanelAction
   record(agent: Agent, verdict: ExperienceVerdict, category: FeedbackCategory): PluginLabPanelAction
+  revise(agent: Agent, summary: string): PluginLabPanelAction
   join(agent: Agent): Promise<PluginLabPanelAction>
   cancel(agent: Agent): PluginLabPanelAction
   discard(agent: Agent, eventId: string): PluginLabPanelAction
@@ -46,6 +47,10 @@ export class PluginLabPanelService extends TypertRemoteService {
     return this.handlers.record(agent, verdict, category)
   }
 
+  revise(agent: Agent, summary: string): PluginLabPanelAction {
+    return this.handlers.revise(agent, summary)
+  }
+
   join(agent: Agent): Promise<PluginLabPanelAction> {
     return this.handlers.join(agent)
   }
@@ -67,7 +72,7 @@ export class PluginLabPanelService extends TypertRemoteService {
   }
 }
 
-for (const method of ['probe', 'select', 'record', 'join', 'cancel', 'discard', 'receipts', 'inbox'] as const) {
+for (const method of ['probe', 'select', 'record', 'revise', 'join', 'cancel', 'discard', 'receipts', 'inbox'] as const) {
   Remote(PluginLabPanelService.prototype[method] as never, {
     kind: 'method',
     name: method,

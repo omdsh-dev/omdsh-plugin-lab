@@ -4,14 +4,16 @@ import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import type {
   ExperienceVerdict, FeedbackCategory, HealthStatus, ReceiptBoxSnapshot, TrialPluginRef,
 } from '../protocol.js'
+import { fixedSummary } from '../summary.js'
 
 /** Silent panel Remote surface. It does not create durable command nodes. */
 export type PluginLabRemote = Pick<ClientRemote['pluginLab'],
-  'probe' | 'select' | 'record' | 'join' | 'cancel' | 'discard' | 'receipts' | 'inbox'>
+  'probe' | 'select' | 'record' | 'revise' | 'join' | 'cancel' | 'discard' | 'receipts' | 'inbox'>
 
 export interface PendingResult {
   readonly verdict: ExperienceVerdict
   readonly category: FeedbackCategory
+  readonly summary?: string
   readonly phase: 'saving' | 'local' | 'joining' | 'joined' | 'error'
   readonly text?: string
 }
@@ -65,10 +67,13 @@ export class LabController implements HostObservable<LabView> {
     this.publish({ ...this.view, pending: { verdict, category, phase: 'saving' } })
     const settled = await this.call(() => this.remote.record(this.sessionId, verdict, category))
     if (settled.ok && settled.value.ok) {
+      const summary = settled.value.summary ?? (this.view.plugin === undefined
+        ? settled.value.text
+        : fixedSummary(this.view.plugin, this.view.health ?? 'unknown', verdict, category))
       this.publish({
         ...this.view,
         active: true,
-        pending: { verdict, category, phase: 'local', text: settled.value.text },
+        pending: { verdict, category, summary, phase: 'local', text: settled.value.text },
       })
       await this.receipts(false)
     } else {
@@ -82,6 +87,34 @@ export class LabController implements HostObservable<LabView> {
         },
       })
     }
+  }
+
+  async revise(summary: string): Promise<void> {
+    const pending = this.view.pending
+    if (pending === undefined || pending.phase !== 'local') return
+    this.publish({ ...this.view, pending: { ...pending, phase: 'saving' } })
+    const settled = await this.call(() => this.remote.revise(this.sessionId, summary))
+    if (settled.ok && settled.value.ok) {
+      this.publish({
+        ...this.view,
+        pending: {
+          ...pending,
+          summary: settled.value.summary ?? summary,
+          phase: 'local',
+          text: settled.value.text,
+        },
+      })
+      await this.receipts(false)
+      return
+    }
+    this.publish({
+      ...this.view,
+      pending: {
+        ...pending,
+        phase: 'error',
+        text: settled.ok ? settled.value.text : settled.text,
+      },
+    })
   }
 
   async join(): Promise<void> {
@@ -163,6 +196,7 @@ export class LabController implements HostObservable<LabView> {
       : {
           verdict: draft.verdict,
           category: draft.category,
+          summary: draft.summary,
           phase: 'local' as const,
           text: draft.text,
         }

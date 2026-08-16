@@ -3,10 +3,11 @@ import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client';
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots';
 import type { ExperienceVerdict, FeedbackCategory, HealthStatus, ReceiptBoxSnapshot, TrialPluginRef } from '../protocol.js';
 /** Silent panel Remote surface. It does not create durable command nodes. */
-export type PluginLabRemote = Pick<ClientRemote['pluginLab'], 'probe' | 'select' | 'record' | 'join' | 'cancel' | 'discard' | 'receipts' | 'inbox'>;
+export type PluginLabRemote = Pick<ClientRemote['pluginLab'], 'probe' | 'select' | 'record' | 'revise' | 'join' | 'cancel' | 'discard' | 'receipts' | 'inbox'>;
 export interface PendingResult {
     readonly verdict: ExperienceVerdict;
     readonly category: FeedbackCategory;
+    readonly summary?: string;
     readonly phase: 'saving' | 'local' | 'joining' | 'joined' | 'error';
     readonly text?: string;
 }
@@ -31,6 +32,7 @@ export declare class LabController implements HostObservable<LabView> {
     subscribe: (listener: () => void) => (() => void);
     setTrialActive(active: boolean): void;
     record(verdict: ExperienceVerdict, category: FeedbackCategory): Promise<void>;
+    revise(summary: string): Promise<void>;
     join(): Promise<void>;
     selectPlugin(plugin: TrialPluginRef): Promise<string>;
     cancel(): Promise<string>;

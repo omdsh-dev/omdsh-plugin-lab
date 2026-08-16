@@ -17,6 +17,7 @@ const health = z.union([
     z.literal('error'),
     z.literal('unknown'),
 ]);
+const summary = z.string().min(1).max(320);
 const pluginRef = z.object({
     moduleName: z.string(),
     version: z.string().optional(),
@@ -25,6 +26,7 @@ const panelDraft = z.object({
     eventId: z.string().readonly(),
     verdict: verdict.readonly(),
     category: category.readonly(),
+    summary: summary.readonly(),
     text: z.string().readonly(),
 });
 const probeResult = z.object({
@@ -39,6 +41,7 @@ const actionResult = z.object({
     ok: z.boolean().readonly(),
     text: z.string().readonly(),
     eventId: z.string().readonly().optional(),
+    summary: summary.readonly().optional(),
 });
 const textResult = z.string();
 const receiptStatus = z.union([
@@ -108,6 +111,23 @@ export const PLUGIN_LAB_REMOTE_DESCRIPTORS = [
         ],
         result: { mode: 'strict', typeSymbol: '@oh-my-dsh/plugin-lab#PluginLabPanelAction', schema: actionResult },
         sourceLocation: { file: 'src/panel-service.ts', line: 29, column: 3 },
+    },
+    {
+        id: '@oh-my-dsh/plugin-lab#pluginLab/revise',
+        service: 'pluginLab', namespace: 'pluginLab', method: 'revise', invocation: { kind: 'direct' },
+        scope: { context: 'agent', wire: 'agentId' },
+        parameters: [
+            {
+                name: 'agent', wire: 'agentId', source: 'lookup', lookup: 'agent',
+                codec: { mode: 'strict', typeSymbol: '@deepseek-ai/dsh-session/types#SessionId', schema: agentId },
+            },
+            {
+                name: 'summary', wire: 'summary', source: 'json',
+                codec: { mode: 'strict', typeSymbol: 'string', schema: summary },
+            },
+        ],
+        result: { mode: 'strict', typeSymbol: '@oh-my-dsh/plugin-lab#PluginLabPanelAction', schema: actionResult },
+        sourceLocation: { file: 'src/panel-service.ts', line: 50, column: 3 },
     },
     {
         id: '@oh-my-dsh/plugin-lab#pluginLab/join',

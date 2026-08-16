@@ -37,6 +37,15 @@ function packet() {
   }
 }
 
+function packetV4(summary = '插件启动偏慢，但交互仍然清楚。') {
+  return {
+    ...packet(),
+    schemaVersion: 4,
+    summary,
+    summarySource: 'user_edited',
+  }
+}
+
 describe('HTTP privacy boundary', () => {
   it('returns a fixed error without echoing rejected content', async () => {
     const base = await endpoint()
@@ -52,12 +61,26 @@ describe('HTTP privacy boundary', () => {
     expect(text).not.toContain(secret)
   })
 
-  it('rejects bodies over 1 KiB before accepting their fields', async () => {
+  it('accepts a safe user summary and rejects a sensitive one without echoing it', async () => {
+    const base = await endpoint()
+    const accepted = await fetch(`${base}/v1/experience-events`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(packetV4()),
+    })
+    expect(accepted.status).toBe(200)
+    const secret = 'token=CANARY_PRIVATE_TOKEN'
+    const rejected = await fetch(`${base}/v1/experience-events`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(packetV4(secret)),
+    })
+    expect(rejected.status).toBe(400)
+    expect(await rejected.text()).toBe('{"error":"invalid closed packet"}')
+  })
+
+  it('rejects bodies over 2 KiB before accepting their fields', async () => {
     const base = await endpoint()
     const response = await fetch(`${base}/v1/experience-events`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ ...packet(), log: 'S'.repeat(2_000) }),
+      body: JSON.stringify({ ...packet(), log: 'S'.repeat(3_000) }),
     })
     expect(response.status).toBe(400)
     expect(await response.json()).toEqual({ error: 'invalid closed packet' })

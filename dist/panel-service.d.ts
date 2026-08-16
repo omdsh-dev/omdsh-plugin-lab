@@ -6,6 +6,7 @@ export interface PluginLabPanelHandlers {
     probe(agent: Agent): PluginLabPanelProbe;
     select(agent: Agent, plugin: TrialPluginRef): PluginLabPanelAction;
     record(agent: Agent, verdict: ExperienceVerdict, category: FeedbackCategory): PluginLabPanelAction;
+    revise(agent: Agent, summary: string): PluginLabPanelAction;
     join(agent: Agent): Promise<PluginLabPanelAction>;
     cancel(agent: Agent): PluginLabPanelAction;
     discard(agent: Agent, eventId: string): PluginLabPanelAction;
@@ -19,6 +20,7 @@ export declare class PluginLabPanelService extends TypertRemoteService {
     probe(agent: Agent): PluginLabPanelProbe;
     select(agent: Agent, plugin: TrialPluginRef): PluginLabPanelAction;
     record(agent: Agent, verdict: ExperienceVerdict, category: FeedbackCategory): PluginLabPanelAction;
+    revise(agent: Agent, summary: string): PluginLabPanelAction;
     join(agent: Agent): Promise<PluginLabPanelAction>;
     cancel(agent: Agent): PluginLabPanelAction;
     discard(agent: Agent, eventId: string): PluginLabPanelAction;

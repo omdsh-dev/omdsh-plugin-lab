@@ -32,10 +32,11 @@ export function defaultDataDir() {
     const dshHome = process.env.DSH_HOME ?? join(homedir(), '.dsh');
     return join(dshHome, 'omdsh-plugin-lab');
 }
-/** Local outbox for the same closed packet sent over the wire. It stores no logs or identifiers. */
+/** Local outbox for the same bounded packet sent over the wire. It stores no logs or identifiers. */
 export class FeedbackStore {
     dataDir;
     eventsPath;
+    legacyEventsPath;
     receiptsPath;
     shareRequestsPath;
     receiptSeenPath;
@@ -44,7 +45,8 @@ export class FeedbackStore {
         if (!isAbsolute(dataDir))
             throw new TypeError('plugin-lab: dataDir must be an absolute path');
         this.dataDir = dataDir;
-        this.eventsPath = join(dataDir, 'feedback-v3.ndjson');
+        this.eventsPath = join(dataDir, 'feedback-v4.ndjson');
+        this.legacyEventsPath = join(dataDir, 'feedback-v3.ndjson');
         this.receiptsPath = join(dataDir, 'receipts-v3.ndjson');
         this.shareRequestsPath = join(dataDir, 'share-requests-v3.ndjson');
         this.receiptSeenPath = join(dataDir, 'receipt-seen-v3.ndjson');
@@ -63,7 +65,7 @@ export class FeedbackStore {
             throw new Error('unknown local feedback event');
         appendJson(this.shareRequestsPath, { eventId });
     }
-    /** Hide one unsubmitted local draft without ever accepting replacement text. */
+    /** Hide one unsubmitted local draft; replacement text is validated before this call. */
     discardDraft(eventId) {
         if (!this.drafts().some(record => record.event.eventId === eventId))
             return false;
@@ -80,7 +82,10 @@ export class FeedbackStore {
         });
     }
     records() {
-        return readLines(this.eventsPath);
+        return [
+            ...readLines(this.legacyEventsPath),
+            ...readLines(this.eventsPath),
+        ];
     }
     receipts() {
         return readLines(this.receiptsPath);

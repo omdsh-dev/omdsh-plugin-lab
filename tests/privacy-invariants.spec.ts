@@ -4,19 +4,22 @@ import { createAgentAssessmentTool, createAgentPrepareTool, createAgentPreviewTo
 import { latestAssistantAnchor } from '../src/client/message-anchor.js'
 import { probeLoaderHealth } from '../src/health.js'
 import {
-  FEEDBACK_CATEGORIES, uploadPayload, type FeedbackEventV3, type LocalFeedbackRecord,
+  FEEDBACK_CATEGORIES, normalizeFeedbackSummary, uploadPayload,
+  type FeedbackEventV4, type LocalFeedbackRecord,
 } from '../src/protocol.js'
 import { fixedSummary, suggestedCategory } from '../src/summary.js'
 
-function event(eventId = crypto.randomUUID()): FeedbackEventV3 {
+function event(eventId = crypto.randomUUID()): FeedbackEventV4 {
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     type: 'feedback.signal',
     eventId,
     plugin: { moduleName: '@example/plugin', version: '1.0.0' },
     health: 'ok',
     experience: 'good',
     category: 'general',
+    summary: '@example/plugin#1.0.0 在“整体体验”方面：运行正常，用户体验为“好用”。',
+    summarySource: 'template',
     source: 'user_confirmed',
   }
 }
@@ -27,7 +30,8 @@ describe('task-agnostic summary privacy invariants', () => {
     const record: LocalFeedbackRecord = { event: packet, requestedShare: true }
     expect(uploadPayload(record)).toBe(packet)
     expect(Object.keys(uploadPayload(record)).sort()).toEqual([
-      'category', 'eventId', 'experience', 'health', 'plugin', 'schemaVersion', 'source', 'type',
+      'category', 'eventId', 'experience', 'health', 'plugin', 'schemaVersion', 'source',
+      'summary', 'summarySource', 'type',
     ])
   })
 
@@ -170,5 +174,17 @@ describe('task-agnostic summary privacy invariants', () => {
     expect(first).toBe(second)
     expect(first).not.toContain(firstPrivateWorld)
     expect(second).not.toContain(secondPrivateWorld)
+  })
+
+  it('allows one bounded user summary but rejects common sensitive paste shapes', () => {
+    expect(normalizeFeedbackSummary('  插件启动偏慢，但交互仍然清楚。  ')).toBe('插件启动偏慢，但交互仍然清楚。')
+    for (const unsafe of [
+      '/Users/alice/private.log',
+      'https://private.example/task/1',
+      'token=CANARY_SECRET',
+      'Error: failed at run (/tmp/private.ts:12:4)',
+      'alice@example.com',
+      '2026-08-16 12:00:01 INFO private task',
+    ]) expect(() => normalizeFeedbackSummary(unsafe)).toThrow()
   })
 })
