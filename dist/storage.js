@@ -101,6 +101,12 @@ export class FeedbackStore {
                 || (marker.updatedAt ?? 0) < (receipt.updatedAt ?? 0);
         });
     }
+    /** Local previews that have never been approved for network sharing. */
+    drafts() {
+        const delivered = new Set(this.receipts().map(receipt => receipt.eventId));
+        const requests = new Set(readLines(this.shareRequestsPath).map(row => row.eventId));
+        return this.records().filter(record => (!delivered.has(record.event.eventId) && !record.requestedShare && !requests.has(record.event.eventId)));
+    }
     pending() {
         const delivered = new Set(this.receipts().map(receipt => receipt.eventId));
         const requests = new Set(readLines(this.shareRequestsPath).map(row => row.eventId));

@@ -7,7 +7,7 @@ const success = <T,>(value: T) => Promise.resolve({ ok: true as const, value })
 
 function remote(overrides: Partial<PluginLabRemote> = {}): PluginLabRemote {
   return {
-    probe: async () => success({ active: true, health: 'ok' as const, text: '插件运行正常' }),
+    probe: async () => success({ active: true, health: 'ok' as const, suggestedCategory: 'general' as const, text: '插件运行正常' }),
     record: async () => success({ ok: true, text: '已只保存在本机' }),
     join: async () => success({ ok: true, text: '问题回执：PL-1234' }),
     inbox: async () => success('暂无新进展'),
@@ -19,7 +19,7 @@ describe('silent panel controller', () => {
   it('keeps local preview and network sharing as separate RPC actions', async () => {
     const record: PluginLabRemote['record'] = vi.fn(async () => success({ ok: true, text: '已只保存在本机' }))
     const join: PluginLabRemote['join'] = vi.fn(async () => success({ ok: true, text: '问题回执：PL-1234' }))
-    const probe: PluginLabRemote['probe'] = vi.fn(async () => success({ active: false, health: 'unknown' as const, text: '未选择试用插件' }))
+    const probe: PluginLabRemote['probe'] = vi.fn(async () => success({ active: false, health: 'unknown' as const, suggestedCategory: 'general' as const, text: '未选择试用插件' }))
     const controller = new LabController(remote({ record, join, probe }), SESSION)
     controller.setTrialActive(true)
 
@@ -37,6 +37,7 @@ describe('silent panel controller', () => {
     await expect(controller.probe()).resolves.toBe('未选择试用插件')
     expect(controller.getSnapshot().active).toBe(false)
     expect(controller.getSnapshot().health).toBe('unknown')
+    expect(controller.getSnapshot().suggestedCategory).toBe('general')
   })
 
   it('surfaces transport and closed action failures', async () => {

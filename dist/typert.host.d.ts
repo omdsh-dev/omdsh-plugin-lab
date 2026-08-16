@@ -30,7 +30,12 @@ export declare const TYPERT: {
             readonly typeSymbol: "@oh-my-dsh/plugin-lab#PluginLabPanelProbe";
             readonly schema: import("zod").ZodObject<{
                 active: import("zod").ZodReadonly<import("zod").ZodBoolean>;
+                plugin: import("zod").ZodOptional<import("zod").ZodReadonly<import("zod").ZodObject<{
+                    moduleName: import("zod").ZodString;
+                    version: import("zod").ZodOptional<import("zod").ZodString>;
+                }, import("zod/v4/core").$strip>>>;
                 health: import("zod").ZodReadonly<import("zod").ZodUnion<readonly [import("zod").ZodLiteral<"ok">, import("zod").ZodLiteral<"unavailable">, import("zod").ZodLiteral<"error">, import("zod").ZodLiteral<"unknown">]>>;
+                suggestedCategory: import("zod").ZodReadonly<import("zod").ZodUnion<readonly [import("zod").ZodLiteral<"installation">, import("zod").ZodLiteral<"startup">, import("zod").ZodLiteral<"invocation">, import("zod").ZodLiteral<"compatibility">, import("zod").ZodLiteral<"reliability">, import("zod").ZodLiteral<"performance">, import("zod").ZodLiteral<"result_quality">, import("zod").ZodLiteral<"general">]>>;
                 text: import("zod").ZodReadonly<import("zod").ZodString>;
             }, import("zod/v4/core").$strip>;
         };

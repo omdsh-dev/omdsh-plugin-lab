@@ -41,8 +41,10 @@ describe('strict local outbox and uploader', () => {
     expect(stored).not.toContain('participant')
     expect(stored).not.toContain('crash')
     expect(store.pending()).toHaveLength(0)
+    expect(store.drafts()).toHaveLength(1)
     store.requestShare(value.event.eventId)
     expect(store.pending()).toHaveLength(1)
+    expect(store.drafts()).toHaveLength(0)
   })
 
   it('posts the exact closed packet and persists a report-scoped receipt', async () => {

@@ -5,6 +5,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import TYPERT_REMOTE from '../typert.remote-client.js'
 import { LabController, type PluginLabRemote } from './controller.js'
 import { PluginLabButton, type PluginLabInjected } from './PluginLabButton.js'
+import { ExperienceResultCard, type LabInjected } from './ExperienceResultCard.js'
 import { PluginLabHistoryRow } from './PluginLabHistoryRow.js'
 
 export { ExperienceResultCard } from './ExperienceResultCard.js'
@@ -50,11 +51,24 @@ export function apply(ctx: ClientContext): void {
         record: (outcome, category) => controller.record(outcome, category),
         join: () => controller.join(),
         dismiss: () => controller.dismiss(),
-        checkHealth: () => controller.probe(),
-        checkInbox: () => controller.inbox(),
       }
     },
   }, PluginLabButton))
+
+  ctx.slots.inject('conversation.chat.assistant-actions', () => ctx.slots.register({
+    name: 'conversation.chat.assistant-actions',
+    id: 'omdsh-experience-receipt',
+    order: 40,
+    inject: (sessionId): LabInjected => {
+      const controller = controllerFor(sessionId)
+      return {
+        hooks: { pluginLab: controller },
+        record: (outcome, category) => controller.record(outcome, category),
+        join: () => controller.join(),
+        dismiss: () => controller.dismiss(),
+      }
+    },
+  }, ExperienceResultCard))
 
   ctx.slots.inject('conversation.chat.commandview', () => ctx.slots.register({
     name: 'conversation.chat.commandview',

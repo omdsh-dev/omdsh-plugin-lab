@@ -16,11 +16,11 @@ const cardStyle: CSSProperties = {
   lineHeight: 1.45,
 }
 
-/** One durable row per confirmed submission; intermediate panel actions stay silent. */
+/** One durable receipt per confirmed submission; intermediate panel actions stay silent. */
 export function PluginLabHistoryRow({ node }: CommandRowProps) {
   return (
     <div style={cardStyle}>
-      <strong style={{ color: 'var(--dsw-alias-label-primary)', whiteSpace: 'nowrap' }}>插件反馈</strong>
+      <strong style={{ color: 'var(--dsw-alias-label-primary)', whiteSpace: 'nowrap' }}>体验回执</strong>
       <span>{node.outcome?.text ?? '正在记录…'}</span>
     </div>
   )

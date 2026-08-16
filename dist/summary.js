@@ -25,6 +25,14 @@ export function categoryText(category) {
 export function verdictText(verdict) {
     return VERDICT_TEXT[verdict];
 }
+/** Agent-facing recommendation derived without conversation, logs, or free text. */
+export function suggestedCategory(health) {
+    if (health === 'unavailable')
+        return 'startup';
+    if (health === 'error')
+        return 'reliability';
+    return 'general';
+}
 export function fixedSummary(plugin, health, experience, category) {
     const coordinate = `${plugin.moduleName}${plugin.version === undefined ? '' : `#${plugin.version}`}`;
     return `${coordinate} 在“${CATEGORY_TEXT[category]}”方面：${HEALTH_TEXT[health]}，用户体验为“${VERDICT_TEXT[experience]}”。`;
@@ -32,8 +40,9 @@ export function fixedSummary(plugin, health, experience, category) {
 /** Every readable preview line is derived from the exact closed upload packet. */
 export function renderUploadPreview(event) {
     return [
-        `待发送：${fixedSummary(event.plugin, event.health, event.experience, event.category)}`,
-        '不会附带本地任务、对话、Prompt、回复、日志或文件；点击“确认发送这条反馈”前不会发送。',
+        `脱敏 Summary：${fixedSummary(event.plugin, event.health, event.experience, event.category)}`,
+        '发送时只会上传生成这句 Summary 所需的有限枚举；不会附带本地任务、对话、Prompt、回复、日志或文件。',
+        '点击“确认发送这份回执”前不会产生网络请求。',
     ];
 }
 //# sourceMappingURL=summary.js.map

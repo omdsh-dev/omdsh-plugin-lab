@@ -21,17 +21,29 @@ const PARAMETERS = {
 const OUTPUT: JsonSchemaNode = {
   type: 'object',
   properties: {
+    plugin: {
+      type: 'object',
+      properties: {
+        moduleName: { type: 'string' },
+        version: { type: 'string' },
+      },
+      required: ['moduleName'],
+      additionalProperties: false,
+    },
     health: { type: 'string', enum: ['ok', 'unavailable', 'error', 'unknown'] },
     experience: { type: 'string', const: 'unknown' },
     feedbackCategories: {
       type: 'array',
       items: { type: 'string', enum: [...FEEDBACK_CATEGORIES] },
     },
+    suggestedCategory: { type: 'string', enum: [...FEEDBACK_CATEGORIES] },
+    analysisScope: { type: 'string', const: 'plugin_identity_and_host_state_only' },
     summaryIsTemplateOnly: { type: 'boolean', const: true },
     userConfirmationRequired: { type: 'boolean', const: true },
   },
   required: [
-    'health', 'experience', 'feedbackCategories', 'summaryIsTemplateOnly', 'userConfirmationRequired',
+    'health', 'experience', 'feedbackCategories', 'suggestedCategory', 'analysisScope',
+    'summaryIsTemplateOnly', 'userConfirmationRequired',
   ],
   additionalProperties: false,
 }
@@ -101,7 +113,8 @@ export function createAgentAssessmentTool(
     description: [
       'Read only the current Plugin Lab trial lifecycle status from the DSH Host.',
       'Call with an empty object. Never infer subjective quality from conversation content.',
-      'You may suggest one task-agnostic category from feedbackCategories, but never include task details.',
+      'Use suggestedCategory, which is derived only from public plugin identity and the Host status enum.',
+      'Never read or include task details, conversation content, logs, files, paths, prompts, or outputs.',
       'When experience is unknown, ask the user to confirm good, mixed, or bad.',
     ].join(' '),
     parameters: PARAMETERS,

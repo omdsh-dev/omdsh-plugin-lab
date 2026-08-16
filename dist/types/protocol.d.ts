@@ -7,7 +7,10 @@ export type FeedbackCategory = typeof FEEDBACK_CATEGORIES[number];
 /** Silent panel response; unlike slash commands, this is never appended to the Session. */
 export interface PluginLabPanelProbe {
     readonly active: boolean;
+    /** Public marketplace coordinate only; never a local path or user label. */
+    readonly plugin?: TrialPluginRef;
     readonly health: HealthStatus;
+    readonly suggestedCategory: FeedbackCategory;
     readonly text: string;
 }
 /** Closed panel action result with no free-text input or Session event side effect. */
@@ -22,9 +25,13 @@ export interface TrialPluginRef {
 }
 /** The only value exposed to the Agent-facing analysis tool. */
 export interface SafeExperienceAssessment {
+    readonly plugin?: TrialPluginRef;
     readonly health: HealthStatus;
     readonly experience: 'unknown';
     readonly feedbackCategories: readonly FeedbackCategory[];
+    /** A deterministic suggestion based only on the Host status enum. */
+    readonly suggestedCategory: FeedbackCategory;
+    readonly analysisScope: 'plugin_identity_and_host_state_only';
     readonly summaryIsTemplateOnly: true;
     readonly userConfirmationRequired: true;
 }

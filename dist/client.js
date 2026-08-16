@@ -23,10 +23,10 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 }) : target, mod));
 
 //#endregion
-let react = require("react");
-react = __toESM(react);
 let react_jsx_runtime = require("react/jsx-runtime");
 react_jsx_runtime = __toESM(react_jsx_runtime);
+let react = require("react");
+react = __toESM(react);
 
 //#region node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/core.js
 var _a$1;
@@ -3832,7 +3832,12 @@ const health = union([
 ]);
 const probeResult = object({
 	active: boolean().readonly(),
+	plugin: object({
+		moduleName: string(),
+		version: string().optional()
+	}).readonly().optional(),
 	health: health.readonly(),
+	suggestedCategory: category.readonly(),
 	text: string().readonly()
 });
 const actionResult = object({
@@ -4019,10 +4024,11 @@ var LabController = class {
 		};
 	};
 	setTrialActive(active) {
-		const { health: _health,...view } = this.view;
+		const { health: _health, suggestedCategory: _suggestedCategory, plugin: _plugin, activatedAt: _activatedAt,...view } = this.view;
 		this.publish({
 			...view,
-			active
+			active,
+			...active ? { activatedAt: Date.now() } : {}
 		});
 	}
 	async record(verdict$1, category$1) {
@@ -4085,7 +4091,9 @@ var LabController = class {
 		this.publish({
 			...this.view,
 			active: result.value.active,
-			health: result.value.health
+			...result.value.plugin === void 0 ? {} : { plugin: result.value.plugin },
+			health: result.value.health,
+			suggestedCategory: result.value.suggestedCategory
 		});
 		return result.value.text;
 	}
@@ -4118,399 +4126,224 @@ var LabController = class {
 };
 
 //#endregion
-//#region src/client/PluginLabButton.tsx
-const triggerStyle$1 = {
-	minHeight: 30,
-	padding: "0 12px",
-	border: "1px solid #0b5e58",
-	borderRadius: 14,
-	cursor: "pointer",
-	background: "#0f766e",
-	color: "#ffffff",
-	boxShadow: "0 1px 2px rgba(15, 23, 42, .22)",
-	fontSize: 12,
-	fontWeight: 600
+//#region src/summary.ts
+const CATEGORY_TEXT = {
+	installation: "安装",
+	startup: "启动",
+	invocation: "调用",
+	compatibility: "兼容性",
+	reliability: "稳定性",
+	performance: "性能",
+	result_quality: "结果质量",
+	general: "整体体验"
 };
-const promptStyle = {
-	display: "flex",
-	alignItems: "center",
-	justifyContent: "space-between",
-	gap: 14,
-	width: "100%",
-	boxSizing: "border-box",
-	padding: "10px 12px",
-	border: "1px solid #475569",
-	borderRadius: 12,
-	background: "#151b23",
-	color: "#f8fafc",
-	boxShadow: "0 6px 20px rgba(0, 0, 0, .24)",
-	fontSize: 13
-};
-const secondaryButtonStyle = {
-	minHeight: 30,
-	padding: "0 10px",
-	border: "1px solid #475569",
-	borderRadius: 9,
-	cursor: "pointer",
-	background: "#26323d",
-	color: "#f8fafc",
-	fontSize: 12,
-	fontWeight: 600
-};
-const closeButtonStyle = {
-	...secondaryButtonStyle,
-	width: 28,
-	minHeight: 28,
-	padding: 0,
+function categoryText(category$1) {
+	return CATEGORY_TEXT[category$1];
+}
+
+//#endregion
+//#region src/client/ExperienceReceiptControls.tsx
+const quietButton = {
+	minWidth: 28,
+	height: 26,
+	padding: "0 6px",
+	border: "1px solid #cbd5e1",
 	borderRadius: 8,
-	fontSize: 17,
+	cursor: "pointer",
+	background: "#f1f5f9",
+	color: "#334155",
+	fontSize: 13,
 	lineHeight: 1
 };
-const panelStyle$1 = {
-	display: "block",
-	width: "100%",
-	boxSizing: "border-box",
-	padding: 14,
-	border: "1px solid #475569",
-	borderRadius: 12,
-	background: "#151b23",
-	color: "#f8fafc",
-	boxShadow: "0 16px 44px rgba(0, 0, 0, .48)",
-	fontSize: 13,
-	lineHeight: 1.45
-};
-const choiceStyle$1 = {
-	minHeight: 32,
-	border: "1px solid #475569",
-	borderRadius: 9,
-	padding: "6px 9px",
-	background: "#26323d",
-	color: "#f8fafc",
-	cursor: "pointer",
-	boxShadow: "0 1px 1px rgba(15, 23, 42, .08)"
-};
-const confirmStyle = {
-	...choiceStyle$1,
+const confirmButton = {
+	...quietButton,
+	width: "auto",
+	padding: "0 10px",
 	borderColor: "#0b5e58",
 	background: "#0f766e",
-	color: "#ffffff",
-	fontWeight: 700,
-	boxShadow: "0 2px 5px rgba(15, 118, 110, .28)"
+	color: "#fff",
+	fontSize: 12,
+	fontWeight: 650
 };
-const previewStyle = {
+const receiptStyle = {
 	display: "grid",
-	gap: 8,
-	padding: 11,
-	border: "1px solid #334155",
+	gap: 7,
+	width: "min(420px, calc(100vw - 40px))",
+	boxSizing: "border-box",
+	padding: "9px 10px",
+	border: "1px solid #cbd5e1",
 	borderRadius: 10,
-	background: "#0f172a"
+	background: "#ffffff",
+	color: "#0f172a",
+	boxShadow: "0 5px 18px rgba(15, 23, 42, .12)",
+	fontSize: 12,
+	lineHeight: 1.45
 };
-const CATEGORY_CHOICES$1 = [
-	{
-		value: "installation",
-		label: "安装"
-	},
-	{
-		value: "startup",
-		label: "启动"
-	},
-	{
-		value: "invocation",
-		label: "调用"
-	},
-	{
-		value: "compatibility",
-		label: "兼容性"
-	},
-	{
-		value: "reliability",
-		label: "稳定性"
-	},
-	{
-		value: "performance",
-		label: "性能"
-	},
-	{
-		value: "result_quality",
-		label: "结果质量"
-	},
-	{
-		value: "general",
-		label: "整体体验"
-	}
-];
-function PluginLabButton({ usePluginLab, record, join, dismiss, checkHealth, checkInbox }) {
-	const view = usePluginLab((value) => value);
-	const [open, setOpen] = (0, react.useState)(false);
-	const [selectedVerdict, setSelectedVerdict] = (0, react.useState)();
-	const [health$1, setHealth] = (0, react.useState)("");
-	const [healthBusy, setHealthBusy] = (0, react.useState)(false);
-	const [inbox, setInbox] = (0, react.useState)();
-	const [inboxBusy, setInboxBusy] = (0, react.useState)(false);
+function pluginLabel(view) {
+	const plugin = view.plugin;
+	if (plugin === void 0) return "本次插件";
+	return `${plugin.moduleName}${plugin.version === void 0 ? "" : `#${plugin.version}`}`;
+}
+function ExperienceReceiptControls({ view, record, join, dismiss, surface }) {
 	const pending = view.pending;
-	const busy = pending?.phase === "saving" || pending?.phase === "joining";
-	const failed = view.health === "error" || view.health === "unavailable";
-	const visible$1 = pending !== void 0 || view.active && failed;
-	const openPanel = () => {
-		if (open) {
-			setOpen(false);
-			return;
-		}
-		setOpen(true);
-		setHealthBusy(true);
-		checkHealth().then(setHealth).finally(() => {
-			setHealthBusy(false);
-		});
-	};
-	if (!visible$1) return null;
-	const promptTitle = pending !== void 0 ? pending.phase === "joined" ? "反馈已提交" : "有一条反馈等待确认" : view.health === "error" ? "当前插件运行报错" : "当前插件暂不可用";
-	return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+	const category$1 = view.suggestedCategory ?? "general";
+	const categoryName = categoryText(category$1);
+	const label = pluginLabel(view);
+	if (pending === void 0) return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+		role: "group",
+		"aria-label": `${label} 体验反馈`,
 		style: {
-			display: "block",
-			width: "100%"
+			display: "inline-flex",
+			alignItems: "center",
+			gap: 4,
+			minWidth: 0
 		},
-		children: [!open && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
-			role: "status",
-			style: promptStyle,
-			children: [/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+		children: [
+			/* @__PURE__ */ (0, react_jsx_runtime.jsx)("small", {
+				title: label,
+				style: {
+					maxWidth: surface === "reply" ? 132 : 220,
+					overflow: "hidden",
+					textOverflow: "ellipsis",
+					whiteSpace: "nowrap",
+					color: "#64748b"
+				},
+				children: surface === "reply" ? label : `${label} · 体验如何？`
+			}),
+			/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+				type: "button",
+				"aria-label": "好用",
+				title: `好用 · Agent 自动归类为${categoryName}`,
+				style: quietButton,
+				onClick: () => {
+					record("good", category$1);
+				},
+				children: "👍"
+			}),
+			/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+				type: "button",
+				"aria-label": "不好用",
+				title: `不好用 · Agent 自动归类为${categoryName}`,
+				style: quietButton,
+				onClick: () => {
+					record("bad", category$1);
+				},
+				children: "👎"
+			})
+		]
+	});
+	const working = pending.phase === "saving" || pending.phase === "joining";
+	return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+		role: "region",
+		"aria-label": "体验回执",
+		style: receiptStyle,
+		children: [
+			/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
 				style: {
 					display: "flex",
 					alignItems: "center",
-					gap: 10,
-					minWidth: 0
+					justifyContent: "space-between",
+					gap: 8
 				},
-				children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-					"aria-hidden": "true",
-					style: {
-						width: 8,
-						height: 8,
-						flex: "0 0 auto",
-						borderRadius: 999,
-						background: "#fb7185"
-					}
-				}), /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
-					style: {
-						display: "grid",
-						gap: 1,
-						minWidth: 0
-					},
-					children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("strong", { children: promptTitle }), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("small", {
-						style: { color: "#cbd5e1" },
-						children: "只基于 Host 状态，不读取对话或日志"
-					})]
+				children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("strong", { children: pending.phase === "joined" ? "回执已发送" : "发送前预览" }), /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("small", {
+					style: { color: "#64748b" },
+					children: ["Agent 分类：", categoryText(pending.category)]
 				})]
-			}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
-				type: "button",
-				"aria-label": "让 Agent 帮我反馈",
-				style: triggerStyle$1,
-				onClick: openPanel,
-				children: pending === void 0 ? "让 Agent 帮我反馈" : "查看反馈"
-			})]
-		}), open && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
-			role: "dialog",
-			"aria-label": "让 Agent 帮我反馈",
-			style: panelStyle$1,
-			children: [
-				/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
-					style: {
-						display: "flex",
-						alignItems: "center",
-						justifyContent: "space-between",
-						gap: 12
+			}),
+			/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+				style: {
+					whiteSpace: "pre-wrap",
+					color: "#334155"
+				},
+				children: pending.phase === "saving" ? "正在本地生成固定模板 Summary…" : pending.phase === "joining" ? "正在发送你看到的有限字段…" : pending.text
+			}),
+			(pending.phase === "saving" || pending.phase === "local") && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("small", {
+				style: { color: "#64748b" },
+				children: "未读取或附带任务、对话正文、Prompt、回复、日志、文件或报错详情。"
+			}),
+			/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+				style: {
+					display: "flex",
+					alignItems: "center",
+					gap: 7
+				},
+				children: [pending.phase === "local" && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+					type: "button",
+					disabled: working,
+					style: confirmButton,
+					onClick: () => {
+						join();
 					},
-					children: [/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
-						style: {
-							display: "grid",
-							gap: 2
-						},
-						children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("strong", { children: "让 Agent 帮你反馈" }), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("small", {
-							style: { color: "#94a3b8" },
-							children: "只整理插件状态与点选项"
-						})]
-					}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
-						type: "button",
-						"aria-label": "关闭插件反馈",
-						style: closeButtonStyle,
-						onClick: () => {
-							setOpen(false);
-						},
-						children: "×"
-					})]
-				}),
-				/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-					role: "status",
-					style: {
-						display: "block",
-						marginTop: 8,
-						color: "#cbd5e1"
-					},
-					children: healthBusy ? "正在检查…" : health$1
-				}),
-				pending === void 0 && view.active && selectedVerdict === void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
-					style: {
-						display: "grid",
-						gap: 9,
-						marginTop: 12
-					},
-					children: [
-						/* @__PURE__ */ (0, react_jsx_runtime.jsx)("strong", { children: "这次体验怎么样？" }),
-						/* @__PURE__ */ (0, react_jsx_runtime.jsx)("small", {
-							style: { color: "#94a3b8" },
-							children: "Agent 不读取对话来猜测体验，这一项由你选择。"
-						}),
-						/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
-							style: {
-								display: "grid",
-								gridTemplateColumns: "repeat(3, 1fr)",
-								gap: 7
-							},
-							children: [
-								/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
-									type: "button",
-									style: choiceStyle$1,
-									onClick: () => {
-										setSelectedVerdict("good");
-									},
-									children: "好用"
-								}),
-								/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
-									type: "button",
-									style: choiceStyle$1,
-									onClick: () => {
-										setSelectedVerdict("mixed");
-									},
-									children: "一般"
-								}),
-								/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
-									type: "button",
-									style: choiceStyle$1,
-									onClick: () => {
-										setSelectedVerdict("bad");
-									},
-									children: "不好用"
-								})
-							]
-						})
-					]
-				}),
-				pending === void 0 && view.active && selectedVerdict !== void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
-					style: {
-						display: "grid",
-						gap: 9,
-						marginTop: 12
-					},
-					children: [
-						/* @__PURE__ */ (0, react_jsx_runtime.jsx)("strong", { children: "让 Agent 按哪个方面整理？" }),
-						/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-							style: {
-								display: "grid",
-								gridTemplateColumns: "repeat(2, 1fr)",
-								gap: 7
-							},
-							children: CATEGORY_CHOICES$1.map((choice) => /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
-								type: "button",
-								style: choiceStyle$1,
-								onClick: () => {
-									record(selectedVerdict, choice.value);
-								},
-								children: choice.label
-							}, choice.value))
-						}),
-						/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
-							type: "button",
-							style: {
-								...secondaryButtonStyle,
-								justifySelf: "start"
-							},
-							onClick: () => {
-								setSelectedVerdict(void 0);
-							},
-							children: "返回"
-						})
-					]
-				}),
-				pending !== void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
-					style: {
-						display: "grid",
-						gap: 9,
-						marginTop: 12
-					},
-					children: [
-						/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
-							style: previewStyle,
-							children: [
-								/* @__PURE__ */ (0, react_jsx_runtime.jsx)("strong", { children: pending.phase === "joined" ? "发送结果" : "发送前预览" }),
-								/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-									style: {
-										whiteSpace: "pre-wrap",
-										color: "#cbd5e1"
-									},
-									children: pending.phase === "saving" ? "Agent 正在生成固定模板预览…" : pending.phase === "joining" ? "正在发送你确认的有限字段…" : pending.text
-								}),
-								(pending.phase === "local" || pending.phase === "saving") && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("small", {
-									style: { color: "#94a3b8" },
-									children: "不会附带当前任务、本地对话、Prompt、回复或日志。"
-								})
-							]
-						}),
-						pending.phase === "local" && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
-							type: "button",
-							disabled: busy,
-							style: confirmStyle,
-							onClick: () => {
-								join();
-							},
-							children: "确认发送这条反馈"
-						}),
-						(pending.phase === "joined" || pending.phase === "error") && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
-							type: "button",
-							style: secondaryButtonStyle,
-							onClick: () => {
-								dismiss();
-								setSelectedVerdict(void 0);
-								setOpen(false);
-							},
-							children: "完成"
-						})
-					]
-				}),
-				/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
-					style: {
-						display: "flex",
-						alignItems: "center",
-						gap: 10,
-						marginTop: 12,
-						paddingTop: 10,
-						borderTop: "1px solid #334155"
-					},
-					children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
-						type: "button",
-						disabled: inboxBusy,
-						style: secondaryButtonStyle,
-						onClick: () => {
-							if (inbox !== void 0) return setInbox(void 0);
-							setInboxBusy(true);
-							checkInbox().then(setInbox).finally(() => {
-								setInboxBusy(false);
-							});
-						},
-						children: inboxBusy ? "检查中…" : "查看进展"
-					}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("small", {
-						style: { color: "#94a3b8" },
-						children: "不会调用模型读取本地对话"
-					})]
-				}),
-				inbox !== void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-					style: {
-						display: "block",
-						marginTop: 7,
-						color: "#cbd5e1",
-						whiteSpace: "pre-wrap"
-					},
-					children: inbox
-				})
-			]
-		})]
+					children: "确认发送"
+				}), (pending.phase === "local" || pending.phase === "joined" || pending.phase === "error") && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+					type: "button",
+					style: quietButton,
+					onClick: dismiss,
+					children: pending.phase === "local" ? "稍后" : "完成"
+				})]
+			})
+		]
+	});
+}
+
+//#endregion
+//#region src/client/message-anchor.ts
+/**
+* Reads only the finalized message identity and timestamp needed to place the
+* receipt controls. It never reads message blocks, tool arguments or results.
+*/
+function latestAssistantAnchor(nodes) {
+	for (let index = nodes.length - 1; index >= 0; index -= 1) {
+		const node = nodes[index];
+		if (node?.kind === "assistant" && node.messageId !== void 0) return {
+			messageId: node.messageId,
+			time: node.time
+		};
+	}
+}
+
+//#endregion
+//#region src/client/PluginLabButton.tsx
+/**
+* Compact fallback for command/UI/crash plugins that produce no later Agent
+* reply. Once a finalized reply exists, its own action row owns the controls.
+*/
+function PluginLabButton({ useSession, usePluginLab, record, join, dismiss }) {
+	const view = usePluginLab((value) => value);
+	const latest = useSession((snapshot) => latestAssistantAnchor(snapshot.nodes));
+	const hasReplyAfterActivation = view.activatedAt !== void 0 && latest !== void 0 && latest.time >= view.activatedAt;
+	const failed = view.health === "error" || view.health === "unavailable";
+	if (!(view.active && failed || view.pending !== void 0) || hasReplyAfterActivation) return null;
+	return /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+		style: {
+			display: "flex",
+			width: "100%",
+			justifyContent: "flex-end",
+			padding: "2px 0"
+		},
+		children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)(ExperienceReceiptControls, {
+			view,
+			record,
+			join,
+			dismiss,
+			surface: "fallback"
+		})
+	});
+}
+
+//#endregion
+//#region src/client/ExperienceResultCard.tsx
+/** Tiny feedback controls attached only to the first finalized reply after trial activation. */
+function ExperienceResultCard({ messageId, useSession, usePluginLab, record, join, dismiss }) {
+	const view = usePluginLab((value) => value);
+	const anchor = useSession((snapshot) => latestAssistantAnchor(snapshot.nodes));
+	if (!(view.activatedAt !== void 0 && anchor !== void 0 && anchor.time >= view.activatedAt && anchor.messageId === messageId) || !view.active && view.pending === void 0) return null;
+	return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(ExperienceReceiptControls, {
+		view,
+		record,
+		join,
+		dismiss,
+		surface: "reply"
 	});
 }
 
@@ -4530,7 +4363,7 @@ const cardStyle = {
 	fontSize: 12,
 	lineHeight: 1.45
 };
-/** One durable row per confirmed submission; intermediate panel actions stay silent. */
+/** One durable receipt per confirmed submission; intermediate panel actions stay silent. */
 function PluginLabHistoryRow({ node }) {
 	return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
 		style: cardStyle,
@@ -4539,235 +4372,8 @@ function PluginLabHistoryRow({ node }) {
 				color: "var(--dsw-alias-label-primary)",
 				whiteSpace: "nowrap"
 			},
-			children: "插件反馈"
+			children: "体验回执"
 		}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { children: node.outcome?.text ?? "正在记录…" })]
-	});
-}
-
-//#endregion
-//#region src/client/ExperienceResultCard.tsx
-const triggerStyle = {
-	border: "none",
-	borderRadius: 14,
-	padding: "4px 9px",
-	cursor: "pointer",
-	background: "var(--dsw-alias-interactive-bg-hover)",
-	color: "var(--dsw-alias-label-secondary)",
-	fontSize: 12
-};
-const panelStyle = {
-	position: "absolute",
-	zIndex: 30,
-	right: 0,
-	bottom: 34,
-	width: 330,
-	padding: 14,
-	border: "1px solid var(--dsw-alias-border-secondary)",
-	borderRadius: 12,
-	background: "var(--dsw-alias-bg-primary)",
-	color: "var(--dsw-alias-label-primary)",
-	boxShadow: "0 12px 36px rgba(0,0,0,.18)",
-	fontSize: 13,
-	lineHeight: 1.5
-};
-const choiceStyle = {
-	border: "1px solid var(--dsw-alias-border-secondary)",
-	borderRadius: 9,
-	padding: "7px 9px",
-	background: "transparent",
-	color: "inherit",
-	cursor: "pointer"
-};
-function shareLabel(verdict$1) {
-	if (verdict$1 === "good") return "贡献聚合实测";
-	if (verdict$1 === "mixed") return "查找相似反馈";
-	return "加入并等待修复";
-}
-const CATEGORY_CHOICES = [
-	{
-		value: "installation",
-		label: "安装"
-	},
-	{
-		value: "startup",
-		label: "启动"
-	},
-	{
-		value: "invocation",
-		label: "调用"
-	},
-	{
-		value: "compatibility",
-		label: "兼容性"
-	},
-	{
-		value: "reliability",
-		label: "稳定性"
-	},
-	{
-		value: "performance",
-		label: "性能"
-	},
-	{
-		value: "result_quality",
-		label: "结果质量"
-	},
-	{
-		value: "general",
-		label: "整体体验"
-	}
-];
-/** Latest durable assistant identity from the rc.6 conversation projection. */
-function latestAssistantMessageId(nodes) {
-	for (let index = nodes.length - 1; index >= 0; index -= 1) {
-		const node = nodes[index];
-		if (node?.kind === "assistant" && node.messageId !== void 0) return node.messageId;
-	}
-}
-function visible(view, messageId, latestMessageId) {
-	return (view.pending !== void 0 || view.active) && latestMessageId === messageId;
-}
-function ExperienceResultCard({ messageId, useSession, usePluginLab, record, join, dismiss }) {
-	const view = usePluginLab((value) => value);
-	const latestMessageId = useSession((snapshot) => latestAssistantMessageId(snapshot.nodes));
-	const [open, setOpen] = (0, react.useState)(false);
-	const [selectedVerdict, setSelectedVerdict] = (0, react.useState)();
-	if (!visible(view, messageId, latestMessageId)) return null;
-	const pending = view.pending;
-	pending?.phase === "saving" || pending?.phase;
-	return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
-		style: {
-			position: "relative",
-			display: "inline-flex"
-		},
-		children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
-			type: "button",
-			style: triggerStyle,
-			onClick: () => {
-				setOpen((value) => !value);
-			},
-			children: pending?.phase === "joined" ? "已加入跟进" : "体验结果"
-		}), open && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
-			role: "dialog",
-			"aria-label": "插件体验结果",
-			style: panelStyle,
-			children: [
-				/* @__PURE__ */ (0, react_jsx_runtime.jsx)("strong", {
-					style: {
-						display: "block",
-						marginBottom: 9
-					},
-					children: selectedVerdict === void 0 ? "你觉得这个插件好用吗？" : "选择一个不涉及任务内容的大类"
-				}),
-				/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-					style: {
-						display: "block",
-						marginBottom: 9,
-						color: "var(--dsw-alias-label-secondary)"
-					},
-					children: "Agent 可以建议有限大类，但不会把当前任务、会话或日志写进摘要。"
-				}),
-				pending === void 0 && selectedVerdict === void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
-					style: {
-						display: "grid",
-						gridTemplateColumns: "repeat(3, 1fr)",
-						gap: 7
-					},
-					children: [
-						/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
-							type: "button",
-							style: choiceStyle,
-							onClick: () => {
-								setSelectedVerdict("good");
-							},
-							children: "好用"
-						}),
-						/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
-							type: "button",
-							style: choiceStyle,
-							onClick: () => {
-								setSelectedVerdict("mixed");
-							},
-							children: "一般"
-						}),
-						/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
-							type: "button",
-							style: choiceStyle,
-							onClick: () => {
-								setSelectedVerdict("bad");
-							},
-							children: "不好用"
-						})
-					]
-				}),
-				pending === void 0 && selectedVerdict !== void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
-					style: {
-						display: "grid",
-						gridTemplateColumns: "repeat(2, 1fr)",
-						gap: 7
-					},
-					children: [CATEGORY_CHOICES.map((choice) => /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
-						type: "button",
-						style: choiceStyle,
-						onClick: () => {
-							record(selectedVerdict, choice.value);
-						},
-						children: choice.label
-					}, choice.value)), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
-						type: "button",
-						style: choiceStyle,
-						onClick: () => {
-							setSelectedVerdict(void 0);
-						},
-						children: "返回"
-					})]
-				}),
-				pending !== void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
-					style: {
-						display: "grid",
-						gap: 9
-					},
-					children: [
-						/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-							style: {
-								whiteSpace: "pre-wrap",
-								color: "var(--dsw-alias-label-secondary)"
-							},
-							children: pending.phase === "saving" ? "正在只存到本机…" : pending.text
-						}),
-						pending.phase === "local" && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("button", {
-							type: "button",
-							style: {
-								...choiceStyle,
-								background: "var(--dsw-alias-interactive-bg-primary)"
-							},
-							onClick: () => {
-								join();
-							},
-							children: ["确认并提交：", shareLabel(pending.verdict)]
-						}),
-						(pending.phase === "joined" || pending.phase === "error") && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
-							type: "button",
-							style: choiceStyle,
-							onClick: () => {
-								dismiss();
-								setSelectedVerdict(void 0);
-								setOpen(false);
-							},
-							children: "完成"
-						})
-					]
-				}),
-				/* @__PURE__ */ (0, react_jsx_runtime.jsx)("small", {
-					style: {
-						display: "block",
-						marginTop: 10,
-						color: "var(--dsw-alias-label-tertiary)"
-					},
-					children: "提交前会显示完整脱敏预览；只发送插件、版本、状态、体验和大类枚举。网络传输并非绝对匿名。"
-				})
-			]
-		})]
 	});
 }
 
@@ -4915,12 +4521,24 @@ function apply(ctx) {
 				hooks: { pluginLab: controller },
 				record: (outcome, category$1) => controller.record(outcome, category$1),
 				join: () => controller.join(),
-				dismiss: () => controller.dismiss(),
-				checkHealth: () => controller.probe(),
-				checkInbox: () => controller.inbox()
+				dismiss: () => controller.dismiss()
 			};
 		}
 	}, PluginLabButton));
+	ctx.slots.inject("conversation.chat.assistant-actions", () => ctx.slots.register({
+		name: "conversation.chat.assistant-actions",
+		id: "omdsh-experience-receipt",
+		order: 40,
+		inject: (sessionId) => {
+			const controller = controllerFor(sessionId);
+			return {
+				hooks: { pluginLab: controller },
+				record: (outcome, category$1) => controller.record(outcome, category$1),
+				join: () => controller.join(),
+				dismiss: () => controller.dismiss()
+			};
+		}
+	}, ExperienceResultCard));
 	ctx.slots.inject("conversation.chat.commandview", () => ctx.slots.register({
 		name: "conversation.chat.commandview",
 		key: "omdsh-history"
