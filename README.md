@@ -1,36 +1,36 @@
 # Oh My DSH Plugin Lab
 
-Plugin Lab 0.5 是面向 DeepSeek Harness rc.6 的隐私优先“体验回执”。它不做插件格子或常驻收集面板：一次插件试用确实产生 Agent 回复后，只在这条回复的操作栏显示 `插件名 · 👍 👎`；命令、纯 UI 或崩溃插件没有回复时，输入区边缘显示同样大小的兜底反馈条。
+Plugin Lab 0.6 是面向 DeepSeek Harness rc.6 的隐私优先“体验回执”。默认只有一个轻量入口 `体验回执`：点开同一张票据即可选择插件、让用户或 Agent 准备反馈、确认发送，并持续查看处理进度。它不是插件格子，也不会自动弹窗或常驻展开。
 
-Agent 只接收一个安全胶囊：公开插件名、版本和 Host 状态枚举。客户端为摆放按钮只读取最新回复的消息 ID 与时间，不读取回复正文；任何一层都不扫描任务、文件或日志。
+插件确实参与一次 Agent 回复时，该回复下方还会出现就地 `👍 👎`，但它只是快捷方式，不是第二个常驻入口。Agent 只接收一个安全胶囊：公开插件名、版本和 Host 状态枚举。客户端为摆放按钮只读取最新回复的消息 ID 与时间，不读取回复正文；任何反馈工具都不接收任务、文件或日志。
 
 ## 现在的体验
 
-1. 从插件市场开始一次试用；在当前 rc.6 开发接入中也可用 `/omdsh-start <plugin>#<version>` 关联目标。
-2. 客户端只查询 Host 的 `ok / unavailable / error / unknown` 有限状态；有 Agent 回复时，`👍 👎` 跟在该回复下面，没有回复且明确故障时才使用输入区兜底条。
-3. 用户只点“好用 / 不好用”；Agent 按 Host 状态的固定规则自动选一个脱敏大类。兼容命令仍支持 `一般` 和手动大类。
-4. 点击后在原位置就地展开完整“脱敏 Summary”，不弹模态框。Summary 只由公开插件坐标和有限枚举拼成；此时只保存到本地回执箱，没有网络请求。
-5. 用户再次点击“确认发送”后，生成该 Summary 所需的有限枚举包才会发送；Session 历史只新增一条独立的“体验回执”卡片。
-6. 回执箱显示本地待确认、等待发送和修复/复测进展。后端聚合到阈值后才创建 GitHub Issue。
+1. 默认只显示一个 `体验回执` 小按钮；未读进展显示数字角标，明确故障或手动选中插件时显示“待反馈”。
+2. 点开后可从已安装插件中选择目标。这里仅调用 rc.6 Host 插件清单，读取公开 `moduleName`、启用状态和 Fiber 生命周期枚举，不读取插件配置或内容。
+3. 用户可直接点 `👍 👎`，也可明确告诉 Agent“这个插件好用/不好用”。Agent 只能把这一个有限评价交给本地准备工具；用户未表达评价时必须询问，不能根据对话或结果自行猜测。
+4. Agent 按 Host 状态固定归类，并在同一张票据中生成发送前预览。Summary 只由公开插件坐标和有限枚举拼成；此时只保存到本机，没有网络请求。
+5. 用户可以改为另一评价或取消草稿。只有点击“确认发送”，所见有限字段才会发送；确认后 Session 历史新增一条独立“体验回执”卡片。
+6. 同一入口长期保留本地草稿、等待发送、聚合、公开跟进、修复和复测状态。后端达到聚合阈值后才创建 GitHub Issue。
 
-普通 Agent/模型调用错误、网络错误或“缺少 API Key”不会触发这个入口，因为它们不能证明插件本身故障。Plugin Lab 不搜索对话或日志来猜测归因。
+普通 Agent/模型调用错误、网络错误或“缺少 API Key”不会被自动归因给插件，因为它们不能证明插件本身故障。`体验回执` 入口仍保持可用，但不会据此自动生成差评。
 
 Agent 的“分析”不是自由阅读：工具输入必须为空，输出只有插件公开坐标、Host 状态、建议大类和允许的枚举。没有模型 API Key 时，固定规则建议与完整回执流程仍然可用。
 
 ```mermaid
 flowchart LR
-  A["插件试用"] --> B["Host 无日志探活"]
-  B --> C{"产生 Agent 回复？"}
-  C -->|"是"| D["回复操作栏 · 👍 👎"]
-  C -->|"否且明确故障"| E["输入区边缘 · 👍 👎"]
-  C -->|"否且状态未知"| J["保持安静"]
-  D --> K["Agent 按安全胶囊自动选大类"]
-  E --> K
-  K --> L["本地脱敏 Summary 就地预览"]
-  L -->|"用户再次确认"| F["发送有限枚举"]
-  F --> G["后端聚合"]
-  G -->|"达到阈值"| H["GitHub 聚合 Issue"]
-  H --> I["修复与复测回执"]
+  A["一个常驻入口 · 体验回执"] --> B["选择已安装插件"]
+  B --> C["Host 无日志探活"]
+  C --> D{"如何表达体验？"}
+  D -->|"用户点击"| E["👍 / 👎"]
+  D -->|"用户明确告诉 Agent"| F["Agent 准备有限评价"]
+  E --> G["本机固定模板预览"]
+  F --> G
+  G -->|"修改或取消"| G
+  G -->|"用户确认发送"| H["有限枚举包"]
+  H --> I["后端聚合"]
+  I -->|"达到阈值"| J["GitHub 聚合 Issue"]
+  J --> K["同一入口查看修复与复测进度"]
 ```
 
 Agent 可能已经拥有当前任务的正常会话上下文，但 Plugin Lab 工具不接受这些内容作为参数，也不读 Session 事件。客户端只用消息 ID 和时间把按钮挂到正确回复，不读取内容块。建议只由 Host 状态确定；主观体验由用户点击，并在 Summary 预览中再次确认。
@@ -40,13 +40,13 @@ Agent 可能已经拥有当前任务的正常会话上下文，但 Plugin Lab �
 ```sh
 pnpm install
 pnpm pack:release
-dsh plugin --profile web add ./oh-my-dsh-plugin-lab-0.5.0.tgz
+dsh plugin --profile web add ./oh-my-dsh-plugin-lab-0.6.0.tgz
 dsh --profile web
 ```
 
-Plugin Lab 是标准 DSH Bundle：`package.json` 通过 `dsh.bundle.patch` 声明 Host 插件，通过 `dsh.client` 注册回复操作栏和无回复故障兜底条。探活、体验选择、脱敏预览和确认提交都保持在当前上下文里完成。
+Plugin Lab 是标准 DSH Bundle：`package.json` 通过 `dsh.bundle.patch` 声明 Host 插件，通过 `dsh.client` 注册一个输入区回执入口和回复下方的上下文快捷操作。插件选择、探活、脱敏预览、确认提交与进度查看都在这一入口中完成。
 
-版本 `0.5.0` 的 Peer 契约从 DSH `0.1.0-rc.6` 起。完整测试会执行真实的 rc.6 打包、安装、Host/Web 启动、Client Loader 注册和卸载。
+版本 `0.6.0` 的 Peer 契约从 DSH `0.1.0-rc.6` 起。完整测试会执行真实的 rc.6 打包、安装、Host/Web 启动、Client Loader 注册和卸载。
 
 ## 兼容命令与 Agent 工具
 
@@ -64,6 +64,7 @@ Plugin Lab 是标准 DSH Bundle：`package.json` 通过 `dsh.bundle.patch` 声�
 | `/omdsh-privacy` | 显示完整隐私边界 |
 | `omdsh_analyze_plugin_experience({})` | Agent 读取安全胶囊和建议大类；输入必须为空 |
 | `omdsh_preview_plugin_feedback({experience, category})` | 生成无副作用固定模板预览；不保存、不上传 |
+| `omdsh_prepare_plugin_receipt({experience})` | Agent 在用户明确评价后准备/替换本地草稿；不上传 |
 
 `verdict` 只能是 `good / mixed / bad`。`category` 只能是：
 
@@ -112,6 +113,7 @@ $DSH_HOME/omdsh-plugin-lab/
   share-requests-v3.ndjson
   receipts-v3.ndjson
   receipt-seen-v3.ndjson
+  draft-discards-v3.ndjson
 ```
 
 目录权限为 `0700`，文件权限为 `0600`。v3 不读取或补传旧版 `.install-id`、`events.ndjson`、`crashes.ndjson` 或 v2 队列；历史文件不会被自动删除。
@@ -134,7 +136,7 @@ Bundle 默认关闭网络发送：
     retryIntervalMs: 30000
 ```
 
-部署开启发送能力不等于用户同意。每条记录仍要由用户单独确认 `/omdsh-join`；拒绝发送不影响插件功能。
+部署开启发送能力不等于用户同意。每条记录仍要由用户在预览卡上单独点击“确认发送”；`/omdsh-join` 只是兼容入口。拒绝发送不影响插件功能。
 
 ## 后端与 GitHub 飞轮
 
@@ -172,4 +174,4 @@ GITHUB_REPORT_THRESHOLD=5
 pnpm test:all
 ```
 
-验证覆盖闭合 Schema、Agent 探活/预览工具、任务内容 canary、两阶段确认、Client 真实点击、服务端未知字段拒绝、PostgreSQL v3 列审计、GitHub 固定模板、聚合阈值、回执/复测，以及真实 DSH rc.6 安装与启动生命周期。
+验证覆盖闭合 Schema、Agent 探活/准备工具、任务内容 canary、单入口选择、修改/取消、两阶段确认、回执进度、Client 真实点击、服务端未知字段拒绝、PostgreSQL v3 列审计、GitHub 固定模板、聚合阈值、回执/复测，以及真实 DSH rc.6 安装与启动生命周期。

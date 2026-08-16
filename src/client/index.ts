@@ -1,10 +1,10 @@
 import type { ClientContext, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
-import type {} from '@deepseek-ai/dsh-api-remotes/client'
+import type { ClientRemote, PluginInventorySnapshot } from '@deepseek-ai/dsh-api-remotes/client'
 import type {} from '@deepseek-ai/dsh-client-ui-commands/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import TYPERT_REMOTE from '../typert.remote-client.js'
 import { LabController, type PluginLabRemote } from './controller.js'
-import { PluginLabButton, type PluginLabInjected } from './PluginLabButton.js'
+import { PluginLabButton, type PluginChoice, type PluginLabInjected } from './PluginLabButton.js'
 import { ExperienceResultCard, type LabInjected } from './ExperienceResultCard.js'
 import { PluginLabHistoryRow } from './PluginLabHistoryRow.js'
 
@@ -29,6 +29,23 @@ export function apply(ctx: ClientContext): void {
     }
     return controller
   }
+  const listPlugins = async (): Promise<readonly PluginChoice[]> => {
+    const remote = ctx.get('remote.pluginInventory') as Pick<ClientRemote['pluginInventory'], 'list'>
+    const result = await remote.list()
+    if (!result.ok) return []
+    const snapshot: PluginInventorySnapshot = result.value
+    return snapshot.entries
+      .filter(entry => entry.moduleName !== '@oh-my-dsh/plugin-lab')
+      .map(entry => ({
+        moduleName: entry.moduleName,
+        enabled: entry.enabled,
+        fiberPhase: entry.fiberPhase,
+      }))
+      .sort((left, right) => {
+        const priority = (value: PluginChoice): number => value.fiberPhase === 'failed' ? 0 : value.fiberPhase === 'active' ? 1 : 2
+        return priority(left) - priority(right) || left.moduleName.localeCompare(right.moduleName)
+      })
+  }
 
   ctx.on('command/executed', (sessionId, name, result) => {
     if (result.kind !== 'success') return
@@ -37,7 +54,6 @@ export function apply(ctx: ClientContext): void {
       controller.setTrialActive(true)
       void controller.probe()
     }
-    if (name === 'omdsh-result' || name === 'omdsh-feedback') controllerFor(sessionId).setTrialActive(false)
   })
 
   ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
@@ -50,7 +66,12 @@ export function apply(ctx: ClientContext): void {
         hooks: { pluginLab: controller },
         record: (outcome, category) => controller.record(outcome, category),
         join: () => controller.join(),
+        cancel: async () => { await controller.cancel() },
         dismiss: () => controller.dismiss(),
+        selectPlugin: plugin => controller.selectPlugin(plugin),
+        listPlugins,
+        loadReceipts: markRead => controller.receipts(markRead),
+        discardReceipt: eventId => controller.discard(eventId),
       }
     },
   }, PluginLabButton))
@@ -65,6 +86,8 @@ export function apply(ctx: ClientContext): void {
         hooks: { pluginLab: controller },
         record: (outcome, category) => controller.record(outcome, category),
         join: () => controller.join(),
+        cancel: async () => { await controller.cancel() },
+        refresh: () => controller.probe(),
         dismiss: () => controller.dismiss(),
       }
     },

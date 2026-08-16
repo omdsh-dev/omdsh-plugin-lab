@@ -5,17 +5,23 @@ import type {
   FeedbackCategory,
   PluginLabPanelAction,
   PluginLabPanelProbe,
+  ReceiptBoxSnapshot,
+  TrialPluginRef,
 } from './protocol.js'
 import { PLUGIN_LAB_REMOTE_DESCRIPTORS } from './typert-schema.js'
 
 interface PluginLabRemoteNamespace {
   probe: (agentId: SessionId) => Promise<RemoteResult<PluginLabPanelProbe>>
+  select: (agentId: SessionId, plugin: TrialPluginRef) => Promise<RemoteResult<PluginLabPanelAction>>
   record: (
     agentId: SessionId,
     verdict: ExperienceVerdict,
     category: FeedbackCategory,
   ) => Promise<RemoteResult<PluginLabPanelAction>>
   join: (agentId: SessionId) => Promise<RemoteResult<PluginLabPanelAction>>
+  cancel: (agentId: SessionId) => Promise<RemoteResult<PluginLabPanelAction>>
+  discard: (agentId: SessionId, eventId: string) => Promise<RemoteResult<PluginLabPanelAction>>
+  receipts: (agentId: SessionId, markRead: boolean) => Promise<RemoteResult<ReceiptBoxSnapshot>>
   inbox: (agentId: SessionId) => Promise<RemoteResult<string>>
 }
 
@@ -25,8 +31,12 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
   }
   interface TypertRemoteMap {
     'pluginLab/probe': PluginLabRemoteNamespace['probe']
+    'pluginLab/select': PluginLabRemoteNamespace['select']
     'pluginLab/record': PluginLabRemoteNamespace['record']
     'pluginLab/join': PluginLabRemoteNamespace['join']
+    'pluginLab/cancel': PluginLabRemoteNamespace['cancel']
+    'pluginLab/discard': PluginLabRemoteNamespace['discard']
+    'pluginLab/receipts': PluginLabRemoteNamespace['receipts']
     'pluginLab/inbox': PluginLabRemoteNamespace['inbox']
   }
 }

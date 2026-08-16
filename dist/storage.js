@@ -39,6 +39,7 @@ export class FeedbackStore {
     receiptsPath;
     shareRequestsPath;
     receiptSeenPath;
+    draftDiscardsPath;
     constructor(dataDir = defaultDataDir()) {
         if (!isAbsolute(dataDir))
             throw new TypeError('plugin-lab: dataDir must be an absolute path');
@@ -47,6 +48,7 @@ export class FeedbackStore {
         this.receiptsPath = join(dataDir, 'receipts-v3.ndjson');
         this.shareRequestsPath = join(dataDir, 'share-requests-v3.ndjson');
         this.receiptSeenPath = join(dataDir, 'receipt-seen-v3.ndjson');
+        this.draftDiscardsPath = join(dataDir, 'draft-discards-v3.ndjson');
         mkdirSync(dataDir, { recursive: true, mode: 0o700 });
         chmodSync(dataDir, 0o700);
     }
@@ -60,6 +62,13 @@ export class FeedbackStore {
         if (this.record(eventId) === undefined)
             throw new Error('unknown local feedback event');
         appendJson(this.shareRequestsPath, { eventId });
+    }
+    /** Hide one unsubmitted local draft without ever accepting replacement text. */
+    discardDraft(eventId) {
+        if (!this.drafts().some(record => record.event.eventId === eventId))
+            return false;
+        appendJson(this.draftDiscardsPath, { eventId });
+        return true;
     }
     markSeen(receipt) {
         if (receipt.receiptId === undefined)
@@ -77,10 +86,14 @@ export class FeedbackStore {
         return readLines(this.receiptsPath);
     }
     record(eventId) {
-        return this.records().findLast(record => record.event.eventId === eventId);
+        return this.visibleRecords().findLast(record => record.event.eventId === eventId);
     }
     latestLocalRecord() {
-        return this.records().at(-1);
+        return this.visibleRecords().at(-1);
+    }
+    visibleRecords() {
+        const discarded = new Set(readLines(this.draftDiscardsPath).map(row => row.eventId));
+        return this.records().filter(record => !discarded.has(record.event.eventId));
     }
     latestReceipts() {
         const latest = new Map();
@@ -105,12 +118,12 @@ export class FeedbackStore {
     drafts() {
         const delivered = new Set(this.receipts().map(receipt => receipt.eventId));
         const requests = new Set(readLines(this.shareRequestsPath).map(row => row.eventId));
-        return this.records().filter(record => (!delivered.has(record.event.eventId) && !record.requestedShare && !requests.has(record.event.eventId)));
+        return this.visibleRecords().filter(record => (!delivered.has(record.event.eventId) && !record.requestedShare && !requests.has(record.event.eventId)));
     }
     pending() {
         const delivered = new Set(this.receipts().map(receipt => receipt.eventId));
         const requests = new Set(readLines(this.shareRequestsPath).map(row => row.eventId));
-        return this.records().flatMap(record => {
+        return this.visibleRecords().flatMap(record => {
             if (delivered.has(record.event.eventId))
                 return [];
             if (!record.requestedShare && !requests.has(record.event.eventId))

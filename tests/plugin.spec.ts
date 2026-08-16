@@ -21,6 +21,41 @@ async function runtime(config: Parameters<typeof plugin.apply>[1]) {
 }
 
 describe('DSH strict feedback integration', () => {
+  it('supports one-entry selection, revision and cancellation without command history', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'omdsh-plugin-lab-'))
+    const dataDir = join(root, 'data')
+    const { ctx, fiber, agent } = await runtime({ dataDir })
+    const panel = ctx.get('pluginLab') as PluginLabPanelService
+    const commandRowsBefore = agent.session.events.filter(event => event.type === 'command/run').length
+
+    expect(panel.select(agent, { moduleName: '@example/plugin' })).toMatchObject({ ok: true })
+    expect(panel.probe(agent)).toMatchObject({
+      active: true,
+      plugin: { moduleName: '@example/plugin' },
+      health: 'unknown',
+    })
+    const first = panel.record(agent, 'bad', 'reliability')
+    expect(first).toMatchObject({ ok: true, eventId: expect.any(String) })
+    await expect(panel.receipts(agent, false)).resolves.toMatchObject({
+      items: [{ localState: 'draft', plugin: { moduleName: '@example/plugin' } }],
+      unreadCount: 0,
+    })
+
+    const revised = panel.record(agent, 'good', 'reliability')
+    expect(revised.eventId).not.toBe(first.eventId)
+    const revisedBox = await panel.receipts(agent, false)
+    expect(revisedBox.items).toHaveLength(1)
+    expect(revisedBox.items[0]?.summary).toContain('好用')
+    expect(panel.cancel(agent)).toMatchObject({ ok: true })
+    await expect(panel.receipts(agent, false)).resolves.toEqual({ items: [], unreadCount: 0 })
+    expect(panel.probe(agent)).toMatchObject({ active: false, health: 'unknown' })
+    expect(agent.session.events.filter(event => event.type === 'command/run')).toHaveLength(commandRowsBefore)
+
+    const persisted = readFileSync(join(dataDir, 'feedback-v3.ndjson'), 'utf8')
+    expect(persisted).not.toContain(String(agent.session.id))
+    await fiber.dispose()
+  })
+
   it('registers one-click health and records only the closed v3 category packet', async () => {
     const root = mkdtempSync(join(tmpdir(), 'omdsh-plugin-lab-'))
     const dataDir = join(root, 'data')

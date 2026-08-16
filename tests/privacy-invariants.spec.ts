@@ -1,6 +1,6 @@
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { describe, expect, it } from 'vitest'
-import { createAgentAssessmentTool, createAgentPreviewTool } from '../src/agent-tool.js'
+import { createAgentAssessmentTool, createAgentPrepareTool, createAgentPreviewTool } from '../src/agent-tool.js'
 import { latestAssistantAnchor } from '../src/client/message-anchor.js'
 import { probeLoaderHealth } from '../src/health.js'
 import {
@@ -131,6 +131,35 @@ describe('task-agnostic summary privacy invariants', () => {
     await expect(tool.execute({
       experience: 'bad', category: 'reliability', summary: 'CANARY_PRIVATE_TASK',
     }, { agent: undefined, arguments: {} } as never)).rejects.toThrow('finite enums only')
+  })
+
+  it('lets the Agent prepare only a finite local verdict and never grants upload capability', async () => {
+    let prepared: string | undefined
+    const plugin = { moduleName: '@example/plugin' }
+    const tool = createAgentPrepareTool((_agent, experience) => {
+      prepared = experience
+      return {
+        plugin,
+        health: 'error',
+        experience,
+        category: 'reliability',
+        summary: fixedSummary(plugin, 'error', experience, 'reliability'),
+        willUpload: false,
+        userConfirmationRequired: true,
+      }
+    })
+    expect(tool.parameters).toMatchObject({
+      properties: { experience: { enum: ['good', 'mixed', 'bad'] } },
+      required: ['experience'],
+      additionalProperties: false,
+    })
+    const result = await tool.execute({ experience: 'bad' }, { agent: undefined, arguments: {} } as never)
+    expect(prepared).toBe('bad')
+    expect(result).toMatchObject({ willUpload: false, userConfirmationRequired: true })
+    await expect(tool.execute({ experience: 'bad', summary: 'CANARY_PRIVATE_TASK' }, {
+      agent: undefined, arguments: {},
+    } as never)).rejects.toThrow('one finite verdict only')
+    expect(JSON.stringify(result)).not.toContain('CANARY_PRIVATE_TASK')
   })
 
   it('satisfies content non-interference for arbitrary private canaries', () => {

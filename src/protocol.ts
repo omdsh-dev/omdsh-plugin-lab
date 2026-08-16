@@ -23,6 +23,14 @@ export interface PluginLabPanelProbe {
   readonly plugin?: TrialPluginRef
   readonly health: HealthStatus
   readonly suggestedCategory: FeedbackCategory
+  readonly draft?: PluginLabPanelDraft
+  readonly text: string
+}
+
+export interface PluginLabPanelDraft {
+  readonly eventId: string
+  readonly verdict: ExperienceVerdict
+  readonly category: FeedbackCategory
   readonly text: string
 }
 
@@ -30,6 +38,7 @@ export interface PluginLabPanelProbe {
 export interface PluginLabPanelAction {
   readonly ok: boolean
   readonly text: string
+  readonly eventId?: string
 }
 
 export interface TrialPluginRef {
@@ -118,6 +127,30 @@ export interface ReceiptSeen {
   readonly receiptId: string
   readonly status?: ReceiptStatus
   readonly updatedAt?: number
+}
+
+export interface DraftDiscard {
+  readonly eventId: string
+}
+
+export type ReceiptLocalState = 'draft' | 'queued' | 'submitted'
+
+/** Safe local projection for the user-owned receipt box. Follow capabilities stay Host-only. */
+export interface ReceiptProgressItem {
+  readonly eventId: string
+  readonly plugin: TrialPluginRef
+  readonly summary: string
+  readonly localState: ReceiptLocalState
+  readonly status?: ReceiptStatus
+  readonly similarReports?: number
+  readonly recommendedVersion?: string
+  readonly trackingUrl?: string
+  readonly unread: boolean
+}
+
+export interface ReceiptBoxSnapshot {
+  readonly items: readonly ReceiptProgressItem[]
+  readonly unreadCount: number
 }
 
 /** The local record is already the exact network packet; no projection can add fields. */
