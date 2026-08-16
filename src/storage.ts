@@ -110,6 +110,15 @@ export class FeedbackStore {
     })
   }
 
+  /** Local previews that have never been approved for network sharing. */
+  drafts(): LocalFeedbackRecord[] {
+    const delivered = new Set(this.receipts().map(receipt => receipt.eventId))
+    const requests = new Set(readLines<ShareRequest>(this.shareRequestsPath).map(row => row.eventId))
+    return this.records().filter(record => (
+      !delivered.has(record.event.eventId) && !record.requestedShare && !requests.has(record.event.eventId)
+    ))
+  }
+
   pending(): LocalFeedbackRecord[] {
     const delivered = new Set(this.receipts().map(receipt => receipt.eventId))
     const requests = new Set(readLines<ShareRequest>(this.shareRequestsPath).map(row => row.eventId))

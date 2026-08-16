@@ -2,6 +2,7 @@ import { Context, Service } from '@deepseek-ai/cordis'
 import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import { SlotCore, type StoredEntry } from '@deepseek-ai/dsh-client-ui-slots'
 import { describe, expect, it, vi } from 'vitest'
+import type { LabInjected } from '../src/client/ExperienceResultCard.js'
 import type { PluginLabInjected } from '../src/client/PluginLabButton.js'
 import { apply, inject } from '../src/client/index.js'
 import type { PluginLabRemote } from '../src/client/controller.js'
@@ -68,7 +69,13 @@ async function bench() {
   const panelRemote: PluginLabRemote = {
     probe: async sessionId => {
       calls.push({ method: 'probe', sessionId })
-      return { ok: true as const, value: { active: true, health: 'unavailable' as const, text: '暂不可用' } }
+      return { ok: true as const, value: {
+        active: true,
+        plugin: { moduleName: '@example/plugin', version: '1.0.0' },
+        health: 'unavailable' as const,
+        suggestedCategory: 'startup' as const,
+        text: '暂不可用',
+      } }
     },
     record: async (sessionId) => {
       calls.push({ method: 'record', sessionId })
@@ -97,9 +104,11 @@ async function bench() {
   await fiber.await()
   const pluginLabEntry = () => slots.entries('conversation.input.dock')
     .find(entry => entry.options.id === 'omdsh-plugin-lab')
+  const assistantEntry = () => slots.entries('conversation.chat.assistant-actions')
+    .find(entry => entry.options.id === 'omdsh-experience-receipt')
   const historyEntry = () => slots.entries('conversation.chat.commandview')
     .find(entry => entry.options.key === 'omdsh-history')
-  return { ctx, slots, calls, declaration, fiber, mount, pluginLabEntry, historyEntry }
+  return { ctx, slots, calls, declaration, fiber, mount, pluginLabEntry, assistantEntry, historyEntry }
 }
 
 function pluginLabFace(
@@ -109,15 +118,23 @@ function pluginLabFace(
   return (entry?.inject as unknown as (id: SessionId) => PluginLabInjected)(sessionId)
 }
 
+function assistantFace(
+  entry: ReturnType<Awaited<ReturnType<typeof bench>>['assistantEntry']>,
+  sessionId: SessionId,
+): LabInjected {
+  return (entry?.inject as unknown as (id: SessionId) => LabInjected)(sessionId)
+}
+
 describe('rc.6 client plugin contract', () => {
-  it('registers one lightweight Slot entry over a real rc.6 SlotRegistry', async () => {
+  it('registers lightweight result and no-reply fallback entries over real rc.6 slots', async () => {
     const b = await bench()
     expect(inject).toEqual(['slots', 'remote'])
     expect(b.mount).toHaveBeenCalledOnce()
     expect(b.pluginLabEntry()?.options).toMatchObject({ id: 'omdsh-plugin-lab', order: 15 })
+    expect(b.assistantEntry()?.options).toMatchObject({ id: 'omdsh-experience-receipt', order: 40 })
     expect(b.slots.entries('conversation.input.dock')).toHaveLength(1)
     expect(b.slots.entries('conversation.input.left')).toHaveLength(0)
-    expect(b.slots.entries('conversation.chat.assistant-actions')).toHaveLength(0)
+    expect(b.slots.entries('conversation.chat.assistant-actions')).toHaveLength(1)
     expect(b.historyEntry()?.options).toMatchObject({ key: 'omdsh-history' })
     await b.fiber.dispose()
   })
@@ -131,6 +148,7 @@ describe('rc.6 client plugin contract', () => {
     b.ctx.emit('command/executed', sid('s1'), 'omdsh-start', { kind: 'success' })
     expect(first.hooks.pluginLab.getSnapshot().active).toBe(true)
     await vi.waitFor(() => { expect(first.hooks.pluginLab.getSnapshot().health).toBe('unavailable') })
+    expect(first.hooks.pluginLab.getSnapshot().suggestedCategory).toBe('startup')
     b.ctx.emit('command/executed', sid('s1'), 'omdsh-result', { kind: 'error', text: 'not saved' })
     expect(first.hooks.pluginLab.getSnapshot().active).toBe(true)
     b.ctx.emit('command/executed', sid('s1'), 'omdsh-result', { kind: 'success' })
@@ -143,14 +161,16 @@ describe('rc.6 client plugin contract', () => {
     await b.fiber.dispose()
   })
 
-  it('exposes probe, inbox and feedback through the same Session controller', async () => {
+  it('shares one Session controller across result action and fallback surfaces', async () => {
     const b = await bench()
     const lab = pluginLabFace(b.pluginLabEntry(), sid('same'))
+    const result = assistantFace(b.assistantEntry(), sid('same'))
     b.ctx.emit('command/executed', sid('same'), 'omdsh-start', { kind: 'success' })
     expect(lab.hooks.pluginLab.getSnapshot().active).toBe(true)
-    await lab.checkInbox()
+    expect(result.hooks.pluginLab).toBe(lab.hooks.pluginLab)
+    await lab.hooks.pluginLab.inbox()
     expect(b.calls.at(-1)).toEqual({ method: 'inbox', sessionId: 'same' })
-    await lab.checkHealth()
+    await lab.hooks.pluginLab.probe()
     expect(b.calls.at(-1)).toEqual({ method: 'probe', sessionId: 'same' })
     await b.fiber.dispose()
   })
@@ -159,19 +179,23 @@ describe('rc.6 client plugin contract', () => {
     const b = await bench()
     b.declaration()
     expect(b.pluginLabEntry()).toBeUndefined()
+    expect(b.assistantEntry()).toBeUndefined()
     expect(b.historyEntry()).toBeUndefined()
 
     const redeclare = declare(b.slots)
     await Promise.resolve()
     expect(b.pluginLabEntry()).toBeDefined()
+    expect(b.assistantEntry()).toBeDefined()
     expect(b.historyEntry()).toBeDefined()
 
     await b.fiber.dispose()
     expect(b.pluginLabEntry()).toBeUndefined()
+    expect(b.assistantEntry()).toBeUndefined()
     expect(b.historyEntry()).toBeUndefined()
     const reloaded = b.ctx.plugin({ inject: [...inject], apply })
     await reloaded.await()
     expect(b.pluginLabEntry()).toBeDefined()
+    expect(b.assistantEntry()).toBeDefined()
     expect(b.historyEntry()).toBeDefined()
     await reloaded.dispose()
     redeclare()

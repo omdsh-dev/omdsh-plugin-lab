@@ -8,8 +8,10 @@ export interface PluginLabInjected {
     record: (verdict: ExperienceVerdict, category: FeedbackCategory) => Promise<void>;
     join: () => Promise<void>;
     dismiss: () => void;
-    checkHealth: () => Promise<string>;
-    checkInbox: () => Promise<string>;
 }
 export type PluginLabButtonProps = PropsRuntime<'conversation.input.dock'> & InjectFace<PluginLabInjected>;
-export declare function PluginLabButton({ usePluginLab, record, join, dismiss, checkHealth, checkInbox, }: PluginLabButtonProps): import("react").JSX.Element | null;
+/**
+ * Compact fallback for command/UI/crash plugins that produce no later Agent
+ * reply. Once a finalized reply exists, its own action row owns the controls.
+ */
+export declare function PluginLabButton({ useSession, usePluginLab, record, join, dismiss, }: PluginLabButtonProps): import("react").JSX.Element | null;

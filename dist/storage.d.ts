@@ -18,5 +18,7 @@ export declare class FeedbackStore {
     latestLocalRecord(): LocalFeedbackRecord | undefined;
     latestReceipts(): IngestReceipt[];
     unreadReceipts(): IngestReceipt[];
+    /** Local previews that have never been approved for network sharing. */
+    drafts(): LocalFeedbackRecord[];
     pending(): LocalFeedbackRecord[];
 }

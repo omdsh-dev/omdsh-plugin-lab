@@ -27,7 +27,7 @@ import {
 } from './protocol.js'
 import { PluginLabPanelService } from './panel-service.js'
 import { FeedbackStore } from './storage.js'
-import { fixedSummary, renderUploadPreview } from './summary.js'
+import { fixedSummary, renderUploadPreview, suggestedCategory } from './summary.js'
 import { ExperienceUploader } from './uploader.js'
 
 export const name = 'omdsh-plugin-lab'
@@ -84,11 +84,14 @@ function health(ctx: Context, plugin: TrialPluginRef): HealthStatus {
   return probeLoaderHealth(ctx.get('loader') as LoaderLike | undefined, plugin.moduleName)
 }
 
-function assessment(status: HealthStatus): SafeExperienceAssessment {
+function assessment(status: HealthStatus, plugin?: TrialPluginRef): SafeExperienceAssessment {
   return {
+    ...plugin === undefined ? {} : { plugin },
     health: status,
     experience: 'unknown',
     feedbackCategories: FEEDBACK_CATEGORIES,
+    suggestedCategory: suggestedCategory(status),
+    analysisScope: 'plugin_identity_and_host_state_only',
     summaryIsTemplateOnly: true,
     userConfirmationRequired: true,
   }
@@ -149,7 +152,10 @@ export function apply(ctx: Context, rawConfig: Config): void {
 
   const assessTrial = (key: string | undefined): SafeExperienceAssessment => {
     const state = key === undefined ? undefined : trials.get(key)
-    return assessment(state === undefined ? 'unknown' : health(ctx, state.plugin))
+    return assessment(
+      state === undefined ? 'unknown' : health(ctx, state.plugin),
+      state?.plugin,
+    )
   }
 
   const previewTrial = (
@@ -173,10 +179,12 @@ export function apply(ctx: Context, rawConfig: Config): void {
 
   const panelProbe = (agent: Agent): PluginLabPanelProbe => {
     const state = trials.get(agentKey(agent))
-    const result = assessment(state === undefined ? 'unknown' : health(ctx, state.plugin))
+    const result = assessment(state === undefined ? 'unknown' : health(ctx, state.plugin), state?.plugin)
     return {
       active: state !== undefined,
+      ...(result.plugin === undefined ? {} : { plugin: result.plugin }),
       health: result.health,
+      suggestedCategory: result.suggestedCategory,
       text: state === undefined
         ? '未选择试用插件'
         : `${state.plugin.moduleName} · ${healthText(result.health)}`,
@@ -235,9 +243,17 @@ export function apply(ctx: Context, rawConfig: Config): void {
         // No logging: network failures remain an unavailable state, not diagnostic data.
       }
     }
+    const drafts = store.drafts()
+    const queued = store.pending()
     const unread = store.unreadReceipts()
-    if (unread.length === 0) return '暂无新进展'
-    const lines = [`${unread.length} 条新进展`]
+    if (drafts.length === 0 && queued.length === 0 && unread.length === 0) return '回执箱为空'
+    const lines = [
+      `回执箱：本地待确认 ${drafts.length} · 等待发送 ${queued.length} · 新进展 ${unread.length}`,
+    ]
+    for (const record of drafts.slice(-3)) {
+      const event = record.event
+      lines.push('', `尚未发送：${fixedSummary(event.plugin, event.health, event.experience, event.category)}`)
+    }
     for (const receipt of unread) {
       lines.push('', ...renderReceipt(receipt))
       if (markRead) store.markSeen(receipt)
@@ -350,7 +366,11 @@ export function apply(ctx: Context, rawConfig: Config): void {
         `运行状态：${healthText(health(ctx, state.plugin))}`,
         '主观体验：未确认',
       ]
-    lines.push(`待发送记录：${store.pending().length} 条。`, `未读处理进展：${store.unreadReceipts().length} 条。`)
+    lines.push(
+      `本地待确认回执：${store.drafts().length} 条。`,
+      `等待发送：${store.pending().length} 条。`,
+      `未读处理进展：${store.unreadReceipts().length} 条。`,
+    )
     return { kind: 'success', text: lines.join('\n') }
   }
 
@@ -359,9 +379,10 @@ export function apply(ctx: Context, rawConfig: Config): void {
     text: [
       `结构化分享：${uploader === undefined ? '未启用' : '只能由用户逐次运行 /omdsh-join 触发'}`,
       '探活：仅本地读取 DSH Host 的 Loader/Fiber 生命周期枚举，不访问插件对象或网络。',
-      'Agent：探活工具零参数；预览工具只接受体验和大类枚举，固定模板预览不会存储或发送。',
+      'Agent：只能读取公开插件名/版本和 Host 状态枚举，按固定规则建议大类；不读 Session 内容、日志或文件。',
+      'Summary：只由有限枚举通过固定模板生成，服务端重建同一句，不接受自由文本 Summary。',
       '可发送字段：schemaVersion、type、随机单次 eventId、公开插件 ID/版本、health、experience、category、source。',
-      '绝不读取或发送：日志、异常、堆栈、崩溃指纹、Prompt、回复、Tool 数据、文件、路径、环境、时间、用户/设备/安装/Session ID。',
+      '绝不读取或发送：日志、异常、堆栈、崩溃指纹、Prompt、回复正文、Tool 数据、文件、路径、环境、时间、用户/设备/安装/Session ID。',
       '网络仍会自然暴露传输元数据，因此本插件不宣称匿名；服务端必须禁止持久化 IP、User-Agent 和请求体日志。',
       `本地最小化数据：${store.dataDir}`,
     ].join('\n'),
@@ -369,7 +390,7 @@ export function apply(ctx: Context, rawConfig: Config): void {
 
   const history = (): CommandResult => {
     const record = store.latestLocalRecord()
-    if (record === undefined) return { kind: 'error', text: '没有可记录的插件反馈。' }
+    if (record === undefined) return { kind: 'error', text: '没有可记录的体验回执。' }
     const event = record.event
     const receipt = store.latestReceipts().find(item => item.eventId === event.eventId)
     const suffix = receipt?.status === undefined ? '已提交' : `已提交 · ${receipt.status}`
@@ -415,7 +436,7 @@ export function apply(ctx: Context, rawConfig: Config): void {
   })
   ctx.commands.register({
     name: 'omdsh-inbox',
-    description: '查看聚合问题、修复版本与复测邀请',
+    description: '查看本地待确认回执、聚合进展与复测邀请',
     input: { hint: '[--peek]' },
     recordInput: false,
     handler: inbox,
@@ -441,7 +462,7 @@ export function apply(ctx: Context, rawConfig: Config): void {
   })
   ctx.commands.register({
     name: 'omdsh-history',
-    description: '内部：在 Session 历史中保留一条已确认的插件反馈卡片',
+    description: '内部：在 Session 历史中保留一条已确认的体验回执卡片',
     recordInput: false,
     handler: history,
   })

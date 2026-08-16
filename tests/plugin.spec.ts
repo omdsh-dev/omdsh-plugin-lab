@@ -62,6 +62,10 @@ describe('DSH strict feedback integration', () => {
       'message', 'stack', 'crash', 'session', 'locale', 'platform', 'path',
     ]
     for (const key of forbidden) expect(stored.event).not.toHaveProperty(key)
+    const inbox = await ctx.commands.execute(agent, '/omdsh-inbox --peek', signal)
+    expect(inbox?.result.text).toContain('本地待确认 1')
+    expect(inbox?.result.text).toContain('尚未发送：@example/plugin#1.0.0 在“稳定性”方面')
+    expect(inbox?.result.text).not.toContain(dataDir)
     await fiber.dispose()
   })
 
@@ -75,7 +79,8 @@ describe('DSH strict feedback integration', () => {
     })
     await ctx.commands.execute(agent, '/omdsh-start plugin', signal)
     const feedback = await ctx.commands.execute(agent, '/omdsh-result good general', signal)
-    expect(feedback?.result.text).toContain('点击“确认发送这条反馈”前不会发送')
+    expect(feedback?.result.text).toContain('脱敏 Summary')
+    expect(feedback?.result.text).toContain('点击“确认发送这份回执”前不会产生网络请求')
     await fiber.dispose()
   })
 

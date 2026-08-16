@@ -20,7 +20,12 @@ const health = z.union([
 ])
 const probeResult = z.object({
   active: z.boolean().readonly(),
+  plugin: z.object({
+    moduleName: z.string(),
+    version: z.string().optional(),
+  }).readonly().optional(),
   health: health.readonly(),
+  suggestedCategory: category.readonly(),
   text: z.string().readonly(),
 })
 const actionResult = z.object({ ok: z.boolean().readonly(), text: z.string().readonly() })
