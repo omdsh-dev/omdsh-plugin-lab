@@ -4919,14 +4919,14 @@ const toolbarButton = {
 	letterSpacing: ".01em"
 };
 const sheetStyle = {
-	width: "min(440px, calc(100vw - 40px))",
+	width: "min(352px, calc(100vw - 28px))",
 	boxSizing: "border-box",
-	padding: 12,
+	padding: 10,
 	border: `1px solid ${line}`,
-	borderRadius: 12,
+	borderRadius: 14,
 	background: paper,
 	color: ink,
-	boxShadow: "0 12px 34px rgba(15, 23, 42, .14)",
+	boxShadow: "0 10px 28px rgba(15, 23, 42, .12)",
 	fontSize: 12
 };
 const STATUS_LABEL = {
@@ -4968,6 +4968,8 @@ function PluginLabButton({ useSession, usePluginLab, record, join, cancel, dismi
 	const latest = useSession((snapshot) => latestAssistantAnchor(snapshot.nodes));
 	const [open, setOpen] = (0, react.useState)(false);
 	const [selecting, setSelecting] = (0, react.useState)(false);
+	const [showAll, setShowAll] = (0, react.useState)(false);
+	const [expandedEventId, setExpandedEventId] = (0, react.useState)();
 	const [plugins, setPlugins] = (0, react.useState)([]);
 	const [query, setQuery] = (0, react.useState)("");
 	const [busy, setBusy] = (0, react.useState)(false);
@@ -4999,6 +5001,8 @@ function PluginLabButton({ useSession, usePluginLab, record, join, cancel, dismi
 		if (open) {
 			setOpen(false);
 			setSelecting(false);
+			setShowAll(false);
+			setExpandedEventId(void 0);
 			setQuery("");
 			return;
 		}
@@ -5019,6 +5023,7 @@ function PluginLabButton({ useSession, usePluginLab, record, join, cancel, dismi
 		box.unreadCount > 0 ? `${box.unreadCount} 新` : void 0,
 		showFallback && view.pending === void 0 ? "待反馈" : void 0
 	].filter((value) => value !== void 0).join(" · ");
+	const visibleReceipts = showAll ? box.items : box.items.slice(0, 3);
 	return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
 		style: {
 			display: "grid",
@@ -5041,21 +5046,22 @@ function PluginLabButton({ useSession, usePluginLab, record, join, cancel, dismi
 				/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
 					style: {
 						display: "flex",
-						alignItems: "baseline",
+						alignItems: "center",
 						justifyContent: "space-between",
 						gap: 10
 					},
 					children: [/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
 						style: {
-							display: "grid",
-							gap: 1
+							display: "inline-flex",
+							alignItems: "baseline",
+							gap: 7
 						},
 						children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("strong", {
 							style: { fontSize: 13 },
 							children: "体验回执"
-						}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("small", {
+						}), /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("small", {
 							style: { color: muted },
-							children: "本机留存 · 打开时更新进度"
+							children: [box.items.length, " 条 · 本机"]
 						})]
 					}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
 						type: "button",
@@ -5102,7 +5108,7 @@ function PluginLabButton({ useSession, usePluginLab, record, join, cancel, dismi
 						minHeight: 34,
 						alignItems: "center",
 						justifyContent: "space-between",
-						marginTop: 10,
+						marginTop: 8,
 						padding: "0 9px",
 						border: `1px solid ${line}`,
 						borderRadius: 8,
@@ -5113,17 +5119,17 @@ function PluginLabButton({ useSession, usePluginLab, record, join, cancel, dismi
 						fontSize: 12
 					},
 					onClick: beginSelection,
-					children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { children: view.plugin === void 0 ? "＋ 选择插件并反馈" : "＋ 反馈另一个插件" }), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("small", {
+					children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { children: view.plugin === void 0 ? "＋ 选择插件" : "＋ 更换插件" }), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("small", {
 						style: { color: muted },
-						children: "只读取插件名与运行状态"
+						children: "仅名称与状态"
 					})]
 				}),
 				selecting && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
 					style: {
 						display: "grid",
 						gap: 7,
-						marginTop: 10,
-						padding: 9,
+						marginTop: 8,
+						padding: 8,
 						border: `1px solid ${line}`,
 						borderRadius: 9,
 						background: "#fff"
@@ -5179,7 +5185,7 @@ function PluginLabButton({ useSession, usePluginLab, record, join, cancel, dismi
 							style: {
 								display: "grid",
 								gap: 2,
-								maxHeight: 220,
+								maxHeight: 164,
 								overflowY: "auto"
 							},
 							children: [
@@ -5239,31 +5245,46 @@ function PluginLabButton({ useSession, usePluginLab, record, join, cancel, dismi
 						})
 					]
 				}),
-				/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+				!selecting && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
 					style: {
 						display: "flex",
 						alignItems: "baseline",
 						justifyContent: "space-between",
 						gap: 10,
-						marginTop: 12,
-						paddingTop: 10,
+						marginTop: 10,
+						paddingTop: 8,
 						borderTop: `1px solid ${line}`
 					},
 					children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("strong", {
-						style: { fontSize: 12 },
-						children: "我的回执"
-					}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("small", {
-						style: { color: muted },
-						children: box.items.length === 0 ? "暂无记录" : `${box.items.length} 条`
+						style: {
+							fontSize: 11,
+							letterSpacing: ".04em",
+							color: "#475569"
+						},
+						children: "最近进度"
+					}), box.items.length > 3 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+						type: "button",
+						style: {
+							...toolbarButton,
+							height: 22,
+							padding: "0 4px",
+							border: 0,
+							background: "transparent",
+							color: accent
+						},
+						onClick: () => {
+							setShowAll((value) => !value);
+							setExpandedEventId(void 0);
+						},
+						children: showAll ? "收起" : `查看全部 ${box.items.length}`
 					})]
 				}),
-				/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+				!selecting && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
 					style: {
 						display: "grid",
-						gap: 8,
-						maxHeight: 300,
+						maxHeight: showAll ? 280 : 190,
 						overflowY: "auto",
-						marginTop: 8
+						marginTop: 3
 					},
 					children: [
 						busy && !selecting && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("small", {
@@ -5280,25 +5301,38 @@ function PluginLabButton({ useSession, usePluginLab, record, join, cancel, dismi
 							},
 							children: "还没有体验回执。"
 						}),
-						!busy && box.items.map((item) => {
+						!busy && visibleReceipts.map((item) => {
 							const current = progressIndex(item);
 							const trackingUrl = safeTrackingUrl(item.trackingUrl);
+							const expanded = expandedEventId === item.eventId;
 							return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
 								style: {
 									display: "grid",
-									gap: 6,
-									padding: "9px 10px",
-									border: `1px solid ${line}`,
-									borderRadius: 10,
-									background: "#fff"
+									gap: 5,
+									padding: "7px 4px 8px",
+									borderBottom: `1px solid ${line}`,
+									background: expanded ? "#f8fafc" : "transparent",
+									borderRadius: expanded ? 8 : 0
 								},
 								children: [
-									/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+									/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("button", {
+										type: "button",
+										"aria-expanded": expanded,
+										"aria-label": `${expanded ? "收起" : "查看"} ${item.plugin.moduleName} 回执详情`,
 										style: {
-											display: "flex",
+											display: "grid",
+											gridTemplateColumns: "minmax(0, 1fr) auto",
 											alignItems: "center",
-											justifyContent: "space-between",
-											gap: 8
+											gap: 8,
+											padding: 0,
+											border: 0,
+											background: "transparent",
+											color: ink,
+											cursor: "pointer",
+											textAlign: "left"
+										},
+										onClick: () => {
+											setExpandedEventId(expanded ? void 0 : item.eventId);
 										},
 										children: [/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("strong", {
 											style: {
@@ -5307,7 +5341,7 @@ function PluginLabButton({ useSession, usePluginLab, record, join, cancel, dismi
 												textOverflow: "ellipsis",
 												whiteSpace: "nowrap",
 												fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-												fontSize: 11
+												fontSize: 10.5
 											},
 											children: [item.plugin.moduleName, item.plugin.version === void 0 ? "" : `#${item.plugin.version}`]
 										}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("small", {
@@ -5317,13 +5351,6 @@ function PluginLabButton({ useSession, usePluginLab, record, join, cancel, dismi
 											},
 											children: itemLabel(item)
 										})]
-									}),
-									/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-										style: {
-											color: "#334155",
-											lineHeight: 1.45
-										},
-										children: item.summary
 									}),
 									/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
 										"aria-label": `进度 ${current + 1}/5`,
@@ -5339,14 +5366,21 @@ function PluginLabButton({ useSession, usePluginLab, record, join, cancel, dismi
 											3,
 											4
 										].map((index) => /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { style: {
-											height: 3,
+											height: 2,
 											borderRadius: 99,
 											background: index <= current ? accent : "#e2e8f0"
 										} }, index))
 									}),
-									/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+									expanded && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+										style: {
+											color: "#334155",
+											lineHeight: 1.45
+										},
+										children: item.summary
+									}), /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
 										style: {
 											display: "flex",
+											flexWrap: "wrap",
 											alignItems: "center",
 											gap: 9,
 											color: muted
@@ -5383,7 +5417,7 @@ function PluginLabButton({ useSession, usePluginLab, record, join, cancel, dismi
 												children: "移除草稿"
 											})
 										]
-									})
+									})] })
 								]
 							}, item.eventId);
 						})
