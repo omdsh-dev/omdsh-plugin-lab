@@ -10,7 +10,7 @@ Plugin Lab 0.6 是面向 DeepSeek Harness rc.6 的隐私优先“体验回执”
 2. 点开后可从已安装插件中选择目标。这里仅调用 rc.6 Host 插件清单，读取公开 `moduleName`、启用状态和 Fiber 生命周期枚举，不读取插件配置或内容。
 3. 用户可直接点 `👍 👎`，也可明确告诉 Agent“这个插件好用/不好用”。Agent 只能把这一个有限评价交给本地准备工具；用户未表达评价时必须询问，不能根据对话或结果自行猜测。
 4. Agent 按 Host 状态固定归类，并在同一张票据中生成发送前预览。Summary 只由公开插件坐标和有限枚举拼成；此时只保存到本机，没有网络请求。
-5. 用户可以改为另一评价或取消草稿。只有点击“确认发送”，所见有限字段才会发送；确认后 Session 历史新增一条独立“体验回执”卡片。
+5. 点“修改”后可在原位调整 `好用 / 一般 / 不好用` 和问题大类，Summary 会实时重算；点击“应用修改”才替换本地草稿。插件对象与 Host 状态保持只读，选错对象可“取消并重选”。只有点击“确认发送”，所见有限字段才会发送；确认后 Session 历史新增一条独立“体验回执”卡片。
 6. 同一入口长期保留本地草稿、等待发送、聚合、公开跟进、修复和复测状态。默认只显示最近 3 条紧凑进度；单条 Summary 和完整历史都由用户按需展开。后端达到聚合阈值后才创建 GitHub Issue。
 
 普通 Agent/模型调用错误、网络错误或“缺少 API Key”不会被自动归因给插件，因为它们不能证明插件本身故障。`体验回执` 入口仍保持可用，但不会据此自动生成差评。
@@ -40,13 +40,13 @@ Agent 可能已经拥有当前任务的正常会话上下文，但 Plugin Lab �
 ```sh
 pnpm install
 pnpm pack:release
-dsh plugin --profile web add ./oh-my-dsh-plugin-lab-0.6.1.tgz
+dsh plugin --profile web add ./oh-my-dsh-plugin-lab-0.6.2.tgz
 dsh --profile web
 ```
 
 Plugin Lab 是标准 DSH Bundle：`package.json` 通过 `dsh.bundle.patch` 声明 Host 插件，通过 `dsh.client` 注册一个输入区回执入口和回复下方的上下文快捷操作。插件选择、探活、脱敏预览、确认提交与进度查看都在这一入口中完成。
 
-版本 `0.6.1` 的 Peer 契约从 DSH `0.1.0-rc.6` 起。完整测试会执行真实的 rc.6 打包、安装、Host/Web 启动、Client Loader 注册和卸载。
+版本 `0.6.2` 的 Peer 契约从 DSH `0.1.0-rc.6` 起。完整测试会执行真实的 rc.6 打包、安装、Host/Web 启动、Client Loader 注册和卸载。
 
 ## 兼容命令与 Agent 工具
 

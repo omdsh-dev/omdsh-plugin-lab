@@ -1,4 +1,4 @@
-import type { ExperienceVerdict, FeedbackCategory } from '../protocol.js';
+import { type ExperienceVerdict, type FeedbackCategory } from '../protocol.js';
 import type { LabView } from './controller.js';
 export interface ExperienceReceiptControlsProps {
     readonly view: LabView;
