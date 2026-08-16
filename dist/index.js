@@ -1,6 +1,6 @@
 /** Task-agnostic plugin health and user-confirmed feedback loop for DeepSeek Harness. */
 import z from '@deepseek-ai/schemastery';
-import { createAgentAssessmentTool, createAgentPreviewTool } from './agent-tool.js';
+import { createAgentAssessmentTool, createAgentPrepareTool, createAgentPreviewTool, } from './agent-tool.js';
 import { healthText, probeLoaderHealth } from './health.js';
 import { JOIN_USAGE, parseJoinTarget, parseReceiptId, parseResultInput, parseStartInput, RESULT_USAGE, RETEST_USAGE, START_USAGE, } from './input.js';
 import { FEEDBACK_SCHEMA_VERSION, FEEDBACK_CATEGORIES, } from './protocol.js';
@@ -95,6 +95,8 @@ export function apply(ctx, rawConfig) {
         })
         : undefined;
     const trials = new Map();
+    /** Session-local pointers only; Session ids are never written to disk or sent. */
+    const draftsBySession = new Map();
     const assessTrial = (key) => {
         const state = key === undefined ? undefined : trials.get(key);
         return assessment(state === undefined ? 'unknown' : health(ctx, state.plugin), state?.plugin);
@@ -115,13 +117,24 @@ export function apply(ctx, rawConfig) {
         };
     };
     const panelProbe = (agent) => {
-        const state = trials.get(agentKey(agent));
+        const key = agentKey(agent);
+        const state = trials.get(key);
         const result = assessment(state === undefined ? 'unknown' : health(ctx, state.plugin), state?.plugin);
+        const draftId = draftsBySession.get(key);
+        const draft = draftId === undefined ? undefined : store.record(draftId);
         return {
             active: state !== undefined,
             ...(result.plugin === undefined ? {} : { plugin: result.plugin }),
             health: result.health,
             suggestedCategory: result.suggestedCategory,
+            ...(draft === undefined ? {} : {
+                draft: {
+                    eventId: draft.event.eventId,
+                    verdict: draft.event.experience,
+                    category: draft.event.category,
+                    text: renderUploadPreview(draft.event).join('\n'),
+                },
+            }),
             text: state === undefined
                 ? '未选择试用插件'
                 : `${state.plugin.moduleName} · ${healthText(result.health)}`,
@@ -132,6 +145,9 @@ export function apply(ctx, rawConfig) {
         const state = trials.get(key);
         if (state === undefined)
             return { ok: false, text: '没有进行中的插件试用。' };
+        const previousDraftId = draftsBySession.get(key);
+        if (previousDraftId !== undefined)
+            store.discardDraft(previousDraftId);
         const event = {
             schemaVersion: FEEDBACK_SCHEMA_VERSION,
             type: 'feedback.signal',
@@ -144,8 +160,29 @@ export function apply(ctx, rawConfig) {
             ...state.retestOfReceiptId === undefined ? {} : { retestOfReceiptId: state.retestOfReceiptId },
         };
         store.append({ event, requestedShare: false });
-        trials.delete(key);
-        return { ok: true, text: renderUploadPreview(event).join('\n') };
+        draftsBySession.set(key, event.eventId);
+        return { ok: true, text: renderUploadPreview(event).join('\n'), eventId: event.eventId };
+    };
+    const prepareFeedback = (agent, verdict) => {
+        if (agent === undefined)
+            throw new TypeError('no active Plugin Lab agent');
+        const state = trials.get(agentKey(agent));
+        if (state === undefined)
+            throw new TypeError('no active Plugin Lab trial');
+        const status = health(ctx, state.plugin);
+        const category = suggestedCategory(status);
+        const result = recordFeedback(agent, verdict, category);
+        if (!result.ok)
+            throw new TypeError(result.text);
+        return {
+            plugin: state.plugin,
+            health: status,
+            experience: verdict,
+            category,
+            summary: fixedSummary(state.plugin, status, verdict, category),
+            willUpload: false,
+            userConfirmationRequired: true,
+        };
     };
     const joinFeedback = async (eventId) => {
         if (uploader === undefined) {
@@ -156,18 +193,52 @@ export function apply(ctx, rawConfig) {
         }
         const existing = store.latestReceipts().find(receipt => receipt.eventId === eventId);
         if (existing !== undefined)
-            return { ok: true, text: renderReceipt(existing).join('\n') };
+            return { ok: true, text: renderReceipt(existing).join('\n'), eventId };
         store.requestShare(eventId);
         try {
             const receipt = (await uploader.flushPending(eventId)).get(eventId);
             if (receipt === undefined)
                 return { ok: false, text: '反馈服务没有返回回执。' };
             store.markSeen(receipt);
-            return { ok: true, text: renderReceipt(receipt).join('\n') };
+            return { ok: true, text: renderReceipt(receipt).join('\n'), eventId };
         }
         catch {
-            return { ok: true, text: '已加入本地发送队列；网络恢复后只会重试同一份有限字段。' };
+            return { ok: true, text: '已加入本地发送队列；网络恢复后只会重试同一份有限字段。', eventId };
         }
+    };
+    const receiptBox = async (markRead) => {
+        if (uploader !== undefined) {
+            try {
+                await uploader.refreshReceipts();
+            }
+            catch {
+                // A progress refresh never reveals diagnostics and never blocks local history.
+            }
+        }
+        const receipts = new Map(store.latestReceipts().map(receipt => [receipt.eventId, receipt]));
+        const queued = new Set(store.pending().map(record => record.event.eventId));
+        const unreadReceipts = store.unreadReceipts();
+        const unread = new Set(unreadReceipts.map(receipt => receipt.eventId));
+        const items = store.visibleRecords().toReversed().map(record => {
+            const event = record.event;
+            const receipt = receipts.get(event.eventId);
+            return {
+                eventId: event.eventId,
+                plugin: event.plugin,
+                summary: fixedSummary(event.plugin, event.health, event.experience, event.category),
+                localState: receipt !== undefined ? 'submitted' : queued.has(event.eventId) ? 'queued' : 'draft',
+                ...(receipt?.status === undefined ? {} : { status: receipt.status }),
+                ...(receipt?.similarReports === undefined ? {} : { similarReports: receipt.similarReports }),
+                ...(receipt?.recommendedVersion === undefined ? {} : { recommendedVersion: receipt.recommendedVersion }),
+                ...(receipt?.trackingUrl === undefined ? {} : { trackingUrl: receipt.trackingUrl }),
+                unread: !markRead && unread.has(event.eventId),
+            };
+        });
+        if (markRead) {
+            for (const receipt of unreadReceipts)
+                store.markSeen(receipt);
+        }
+        return { items, unreadCount: markRead ? 0 : unread.size };
     };
     const readInbox = async (markRead) => {
         if (uploader !== undefined) {
@@ -197,16 +268,64 @@ export function apply(ctx, rawConfig) {
         }
         return lines.join('\n');
     };
+    const selectTrial = (agent, plugin) => {
+        let parsed;
+        try {
+            const coordinate = `${plugin.moduleName}${plugin.version === undefined ? '' : `#${plugin.version}`}`;
+            parsed = parseStartInput(coordinate);
+        }
+        catch {
+            return { ok: false, text: '请选择插件清单中的公开插件。' };
+        }
+        const key = agentKey(agent);
+        const previousDraftId = draftsBySession.get(key);
+        if (previousDraftId !== undefined)
+            store.discardDraft(previousDraftId);
+        draftsBySession.delete(key);
+        trials.set(key, { plugin: parsed.plugin });
+        return {
+            ok: true,
+            text: `已选择 ${parsed.plugin.moduleName}${parsed.plugin.version === undefined ? '' : `#${parsed.plugin.version}`}`,
+        };
+    };
+    const cancelCurrentDraft = (agent) => {
+        const key = agentKey(agent);
+        const eventId = draftsBySession.get(key);
+        if (eventId !== undefined)
+            store.discardDraft(eventId);
+        draftsBySession.delete(key);
+        trials.delete(key);
+        return { ok: true, text: '已取消本地回执；没有发送任何内容。' };
+    };
+    const discardDraft = (agent, eventId) => {
+        if (!/^[0-9a-f-]{36}$/iu.test(eventId) || !store.discardDraft(eventId)) {
+            return { ok: false, text: '找不到这份本地待确认回执。' };
+        }
+        const key = agentKey(agent);
+        if (draftsBySession.get(key) === eventId) {
+            draftsBySession.delete(key);
+            trials.delete(key);
+        }
+        return { ok: true, text: '已从本地回执箱移除。', eventId };
+    };
     new PluginLabPanelService(ctx, {
         probe: panelProbe,
+        select: selectTrial,
         record: recordFeedback,
         join: async (agent) => {
-            const result = await joinFeedback(store.latestLocalRecord()?.event.eventId);
+            const key = agentKey(agent);
+            const eventId = draftsBySession.get(key);
+            const result = await joinFeedback(eventId);
             if (result.ok) {
+                draftsBySession.delete(key);
+                trials.delete(key);
                 await ctx.commands.execute(agent, '/omdsh-history', new AbortController().signal);
             }
             return result;
         },
+        cancel: cancelCurrentDraft,
+        discard: discardDraft,
+        receipts: async (_agent, markRead) => receiptBox(markRead),
         inbox: async () => readInbox(true),
     });
     // Optional capability: headless command-only tests still work, while a normal
@@ -214,6 +333,7 @@ export function apply(ctx, rawConfig) {
     ctx.inject(['tools'], toolCtx => {
         toolCtx.tools.register(createAgentAssessmentTool(agent => assessTrial(agentSessionKey(agent))));
         toolCtx.tools.register(createAgentPreviewTool((agent, experience, category) => (previewTrial(agentSessionKey(agent), experience, category))));
+        toolCtx.tools.register(createAgentPrepareTool(prepareFeedback));
     });
     const beginTrial = (invocation, input, retestOfReceiptId) => {
         const key = sessionKey(invocation);
@@ -278,6 +398,13 @@ export function apply(ctx, rawConfig) {
         }
         const eventId = target === 'latest' ? store.latestLocalRecord()?.event.eventId : target;
         const result = await joinFeedback(eventId);
+        if (result.ok && eventId !== undefined) {
+            const key = sessionKey(invocation);
+            if (draftsBySession.get(key) === eventId) {
+                draftsBySession.delete(key);
+                trials.delete(key);
+            }
+        }
         return result.ok ? { kind: 'success', text: result.text } : { kind: 'error', text: result.text };
     };
     const inbox = async (invocation) => {

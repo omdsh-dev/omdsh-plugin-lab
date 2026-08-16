@@ -77,6 +77,10 @@ async function bench() {
         text: '暂不可用',
       } }
     },
+    select: async sessionId => {
+      calls.push({ method: 'select', sessionId })
+      return { ok: true as const, value: { ok: true, text: '已选择插件' } }
+    },
     record: async (sessionId) => {
       calls.push({ method: 'record', sessionId })
       return { ok: true as const, value: { ok: true, text: '待确认' } }
@@ -84,6 +88,18 @@ async function bench() {
     join: async sessionId => {
       calls.push({ method: 'join', sessionId })
       return { ok: true as const, value: { ok: true, text: '已提交' } }
+    },
+    cancel: async sessionId => {
+      calls.push({ method: 'cancel', sessionId })
+      return { ok: true as const, value: { ok: true, text: '已取消' } }
+    },
+    discard: async (sessionId, eventId) => {
+      calls.push({ method: 'discard', sessionId })
+      return { ok: true as const, value: { ok: true, text: '已移除', eventId } }
+    },
+    receipts: async sessionId => {
+      calls.push({ method: 'receipts', sessionId })
+      return { ok: true as const, value: { items: [], unreadCount: 0 } }
     },
     inbox: async sessionId => {
       calls.push({ method: 'inbox', sessionId })
@@ -93,11 +109,19 @@ async function bench() {
   const mount = vi.fn()
   class RemoteService extends Service {
     readonly pluginLab = panelRemote
+    readonly pluginInventory = {
+      list: async () => ({ ok: true as const, value: { entries: [{
+        moduleName: '@example/plugin',
+        enabled: true,
+        fiberPhase: 'active' as const,
+      }] } }),
+    }
     readonly $mount = mount
     constructor(serviceCtx: Context) { super(serviceCtx, 'remote') }
   }
-  new RemoteService(ctx)
+  const remoteService = new RemoteService(ctx)
   ctx.provide('remote.pluginLab', panelRemote)
+  ctx.provide('remote.pluginInventory', remoteService.pluginInventory)
   const slots = new TestSlotRegistry(ctx)
   const declaration = declare(slots)
   const fiber = ctx.plugin({ inject: [...inject], apply })
@@ -152,7 +176,7 @@ describe('rc.6 client plugin contract', () => {
     b.ctx.emit('command/executed', sid('s1'), 'omdsh-result', { kind: 'error', text: 'not saved' })
     expect(first.hooks.pluginLab.getSnapshot().active).toBe(true)
     b.ctx.emit('command/executed', sid('s1'), 'omdsh-result', { kind: 'success' })
-    expect(first.hooks.pluginLab.getSnapshot().active).toBe(false)
+    expect(first.hooks.pluginLab.getSnapshot().active).toBe(true)
 
     b.ctx.emit('command/executed', sid('s2'), 'omdsh-retest', { kind: 'success' })
     const second = pluginLabFace(b.pluginLabEntry(), sid('s2'))
@@ -172,6 +196,7 @@ describe('rc.6 client plugin contract', () => {
     expect(b.calls.at(-1)).toEqual({ method: 'inbox', sessionId: 'same' })
     await lab.hooks.pluginLab.probe()
     expect(b.calls.at(-1)).toEqual({ method: 'probe', sessionId: 'same' })
+    await expect(lab.listPlugins()).resolves.toMatchObject([{ moduleName: '@example/plugin' }])
     await b.fiber.dispose()
   })
 

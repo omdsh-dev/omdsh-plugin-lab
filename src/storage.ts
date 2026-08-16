@@ -2,7 +2,7 @@ import { appendFileSync, chmodSync, mkdirSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
 import type {
-  IngestReceipt, LocalFeedbackRecord, ReceiptSeen, ShareRequest,
+  DraftDiscard, IngestReceipt, LocalFeedbackRecord, ReceiptSeen, ShareRequest,
 } from './protocol.js'
 
 function readLines<T>(path: string): T[] {
@@ -42,6 +42,7 @@ export class FeedbackStore {
   readonly receiptsPath: string
   readonly shareRequestsPath: string
   readonly receiptSeenPath: string
+  readonly draftDiscardsPath: string
 
   constructor(dataDir = defaultDataDir()) {
     if (!isAbsolute(dataDir)) throw new TypeError('plugin-lab: dataDir must be an absolute path')
@@ -50,6 +51,7 @@ export class FeedbackStore {
     this.receiptsPath = join(dataDir, 'receipts-v3.ndjson')
     this.shareRequestsPath = join(dataDir, 'share-requests-v3.ndjson')
     this.receiptSeenPath = join(dataDir, 'receipt-seen-v3.ndjson')
+    this.draftDiscardsPath = join(dataDir, 'draft-discards-v3.ndjson')
     mkdirSync(dataDir, { recursive: true, mode: 0o700 })
     chmodSync(dataDir, 0o700)
   }
@@ -65,6 +67,13 @@ export class FeedbackStore {
   requestShare(eventId: string): void {
     if (this.record(eventId) === undefined) throw new Error('unknown local feedback event')
     appendJson(this.shareRequestsPath, { eventId } satisfies ShareRequest)
+  }
+
+  /** Hide one unsubmitted local draft without ever accepting replacement text. */
+  discardDraft(eventId: string): boolean {
+    if (!this.drafts().some(record => record.event.eventId === eventId)) return false
+    appendJson(this.draftDiscardsPath, { eventId } satisfies DraftDiscard)
+    return true
   }
 
   markSeen(receipt: IngestReceipt): void {
@@ -85,11 +94,16 @@ export class FeedbackStore {
   }
 
   record(eventId: string): LocalFeedbackRecord | undefined {
-    return this.records().findLast(record => record.event.eventId === eventId)
+    return this.visibleRecords().findLast(record => record.event.eventId === eventId)
   }
 
   latestLocalRecord(): LocalFeedbackRecord | undefined {
-    return this.records().at(-1)
+    return this.visibleRecords().at(-1)
+  }
+
+  visibleRecords(): LocalFeedbackRecord[] {
+    const discarded = new Set(readLines<DraftDiscard>(this.draftDiscardsPath).map(row => row.eventId))
+    return this.records().filter(record => !discarded.has(record.event.eventId))
   }
 
   latestReceipts(): IngestReceipt[] {
@@ -114,7 +128,7 @@ export class FeedbackStore {
   drafts(): LocalFeedbackRecord[] {
     const delivered = new Set(this.receipts().map(receipt => receipt.eventId))
     const requests = new Set(readLines<ShareRequest>(this.shareRequestsPath).map(row => row.eventId))
-    return this.records().filter(record => (
+    return this.visibleRecords().filter(record => (
       !delivered.has(record.event.eventId) && !record.requestedShare && !requests.has(record.event.eventId)
     ))
   }
@@ -122,7 +136,7 @@ export class FeedbackStore {
   pending(): LocalFeedbackRecord[] {
     const delivered = new Set(this.receipts().map(receipt => receipt.eventId))
     const requests = new Set(readLines<ShareRequest>(this.shareRequestsPath).map(row => row.eventId))
-    return this.records().flatMap(record => {
+    return this.visibleRecords().flatMap(record => {
       if (delivered.has(record.event.eventId)) return []
       if (!record.requestedShare && !requests.has(record.event.eventId)) return []
       return [{ ...record, requestedShare: true }]

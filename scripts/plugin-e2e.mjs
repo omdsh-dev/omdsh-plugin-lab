@@ -93,6 +93,9 @@ function assertStrictHostArtifact(indexSource, toolSource) {
   if (!toolSource.includes('omdsh_preview_plugin_feedback')) {
     throw new Error('installed Host artifact omitted the Agent finite-enum preview tool')
   }
+  if (!toolSource.includes('omdsh_prepare_plugin_receipt')) {
+    throw new Error('installed Host artifact omitted the Agent local receipt preparation tool')
+  }
   for (const forbidden of ['uncaughtExceptionMonitor', 'participantId', 'crashes.ndjson', 'shareNote']) {
     if (source.includes(forbidden)) {
       throw new Error(`installed Host artifact retained forbidden v1 path: ${forbidden}`)

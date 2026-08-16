@@ -6,12 +6,18 @@ import type {
   FeedbackCategory,
   PluginLabPanelAction,
   PluginLabPanelProbe,
+  ReceiptBoxSnapshot,
+  TrialPluginRef,
 } from './protocol.js'
 
 export interface PluginLabPanelHandlers {
   probe(agent: Agent): PluginLabPanelProbe
+  select(agent: Agent, plugin: TrialPluginRef): PluginLabPanelAction
   record(agent: Agent, verdict: ExperienceVerdict, category: FeedbackCategory): PluginLabPanelAction
   join(agent: Agent): Promise<PluginLabPanelAction>
+  cancel(agent: Agent): PluginLabPanelAction
+  discard(agent: Agent, eventId: string): PluginLabPanelAction
+  receipts(agent: Agent, markRead: boolean): Promise<ReceiptBoxSnapshot>
   inbox(agent: Agent): Promise<string>
 }
 
@@ -28,6 +34,10 @@ export class PluginLabPanelService extends TypertRemoteService {
     return this.handlers.probe(agent)
   }
 
+  select(agent: Agent, plugin: TrialPluginRef): PluginLabPanelAction {
+    return this.handlers.select(agent, plugin)
+  }
+
   record(
     agent: Agent,
     verdict: ExperienceVerdict,
@@ -40,12 +50,24 @@ export class PluginLabPanelService extends TypertRemoteService {
     return this.handlers.join(agent)
   }
 
+  cancel(agent: Agent): PluginLabPanelAction {
+    return this.handlers.cancel(agent)
+  }
+
+  discard(agent: Agent, eventId: string): PluginLabPanelAction {
+    return this.handlers.discard(agent, eventId)
+  }
+
+  receipts(agent: Agent, markRead: boolean): Promise<ReceiptBoxSnapshot> {
+    return this.handlers.receipts(agent, markRead)
+  }
+
   inbox(agent: Agent): Promise<string> {
     return this.handlers.inbox(agent)
   }
 }
 
-for (const method of ['probe', 'record', 'join', 'inbox'] as const) {
+for (const method of ['probe', 'select', 'record', 'join', 'cancel', 'discard', 'receipts', 'inbox'] as const) {
   Remote(PluginLabPanelService.prototype[method] as never, {
     kind: 'method',
     name: method,

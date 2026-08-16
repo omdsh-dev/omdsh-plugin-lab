@@ -7,15 +7,19 @@ export declare class FeedbackStore {
     readonly receiptsPath: string;
     readonly shareRequestsPath: string;
     readonly receiptSeenPath: string;
+    readonly draftDiscardsPath: string;
     constructor(dataDir?: string);
     append(record: LocalFeedbackRecord): void;
     appendReceipt(receipt: IngestReceipt): void;
     requestShare(eventId: string): void;
+    /** Hide one unsubmitted local draft without ever accepting replacement text. */
+    discardDraft(eventId: string): boolean;
     markSeen(receipt: IngestReceipt): void;
     records(): LocalFeedbackRecord[];
     receipts(): IngestReceipt[];
     record(eventId: string): LocalFeedbackRecord | undefined;
     latestLocalRecord(): LocalFeedbackRecord | undefined;
+    visibleRecords(): LocalFeedbackRecord[];
     latestReceipts(): IngestReceipt[];
     unreadReceipts(): IngestReceipt[];
     /** Local previews that have never been approved for network sharing. */

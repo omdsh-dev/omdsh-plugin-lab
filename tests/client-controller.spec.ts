@@ -8,8 +8,12 @@ const success = <T,>(value: T) => Promise.resolve({ ok: true as const, value })
 function remote(overrides: Partial<PluginLabRemote> = {}): PluginLabRemote {
   return {
     probe: async () => success({ active: true, health: 'ok' as const, suggestedCategory: 'general' as const, text: '插件运行正常' }),
+    select: async () => success({ ok: true, text: '已选择插件' }),
     record: async () => success({ ok: true, text: '已只保存在本机' }),
     join: async () => success({ ok: true, text: '问题回执：PL-1234' }),
+    cancel: async () => success({ ok: true, text: '已取消' }),
+    discard: async (_sessionId, eventId) => success({ ok: true, text: '已移除', eventId }),
+    receipts: async () => success({ items: [], unreadCount: 0 }),
     inbox: async () => success('暂无新进展'),
     ...overrides,
   } as PluginLabRemote
@@ -26,7 +30,7 @@ describe('silent panel controller', () => {
     await controller.record('bad', 'reliability')
     expect(record).toHaveBeenLastCalledWith(SESSION, 'bad', 'reliability')
     expect(controller.getSnapshot()).toMatchObject({
-      active: false,
+      active: true,
       pending: { verdict: 'bad', category: 'reliability', phase: 'local' },
     })
     expect(controller.getSnapshot().pending).not.toHaveProperty('messageId')
@@ -38,6 +42,44 @@ describe('silent panel controller', () => {
     expect(controller.getSnapshot().active).toBe(false)
     expect(controller.getSnapshot().health).toBe('unknown')
     expect(controller.getSnapshot().suggestedCategory).toBe('general')
+  })
+
+  it('selects a plugin without a command and keeps a local progress box', async () => {
+    const select: PluginLabRemote['select'] = vi.fn(async () => success({ ok: true, text: '已选择 @example/plugin' }))
+    const receipts: PluginLabRemote['receipts'] = vi.fn(async () => success({
+      items: [{
+        eventId: '00000000-0000-4000-8000-000000000001',
+        plugin: { moduleName: '@example/plugin' },
+        summary: '固定模板摘要',
+        localState: 'submitted' as const,
+        status: 'clustered' as const,
+        unread: true,
+      }],
+      unreadCount: 1,
+    }))
+    const controller = new LabController(remote({ select, receipts }), SESSION)
+
+    await controller.selectPlugin({ moduleName: '@example/plugin' })
+    expect(select).toHaveBeenCalledWith(SESSION, { moduleName: '@example/plugin' })
+    expect(controller.getSnapshot()).toMatchObject({
+      active: true,
+      manualSelection: true,
+      plugin: { moduleName: '@example/plugin' },
+    })
+
+    await expect(controller.receipts(false)).resolves.toMatchObject({ unreadCount: 1 })
+    expect(controller.getSnapshot().receiptBox?.items).toHaveLength(1)
+  })
+
+  it('cancels the current local draft and clears selection state', async () => {
+    const controller = new LabController(remote(), SESSION)
+    await controller.selectPlugin({ moduleName: '@example/plugin' })
+    await controller.record('bad', 'general')
+    await controller.cancel()
+    expect(controller.getSnapshot()).toEqual({
+      active: false,
+      receiptBox: { items: [], unreadCount: 0 },
+    })
   })
 
   it('surfaces transport and closed action failures', async () => {

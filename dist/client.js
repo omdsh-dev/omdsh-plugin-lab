@@ -23,10 +23,10 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 }) : target, mod));
 
 //#endregion
-let react_jsx_runtime = require("react/jsx-runtime");
-react_jsx_runtime = __toESM(react_jsx_runtime);
 let react = require("react");
 react = __toESM(react);
+let react_jsx_runtime = require("react/jsx-runtime");
+react_jsx_runtime = __toESM(react_jsx_runtime);
 
 //#region node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/core.js
 var _a$1;
@@ -115,6 +115,13 @@ function cleanRegex(source) {
 	const start = source.startsWith("^") ? 1 : 0;
 	const end = source.endsWith("$") ? source.length - 1 : source.length;
 	return source.slice(start, end);
+}
+function floatSafeRemainder(val, step) {
+	const ratio = val / step;
+	const roundedRatio = Math.round(ratio);
+	const tolerance = Number.EPSILON * Math.max(Math.abs(ratio), 1);
+	if (Math.abs(ratio - roundedRatio) < tolerance) return 0;
+	return ratio - roundedRatio;
 }
 const EVALUATING = /* @__PURE__ */ Symbol("evaluating");
 function defineLazy(object$1, key, getter) {
@@ -642,6 +649,8 @@ const string$1 = (params) => {
 	const regex = params ? `[\\s\\S]{${params?.minimum ?? 0},${params?.maximum ?? ""}}` : `[\\s\\S]*`;
 	return /* @__PURE__ */ new RegExp(`^${regex}$`);
 };
+const integer = /^-?\d+$/;
+const number$1 = /^-?\d+(?:\.\d+)?$/;
 const boolean$1 = /^(?:true|false)$/i;
 const lowercase = /^[^A-Z]*$/;
 const uppercase = /^[^a-z]*$/;
@@ -653,6 +662,145 @@ const $ZodCheck = /* @__PURE__ */ $constructor("$ZodCheck", (inst, def) => {
 	inst._zod ?? (inst._zod = {});
 	inst._zod.def = def;
 	(_a$2 = inst._zod).onattach ?? (_a$2.onattach = []);
+});
+const numericOriginMap = {
+	number: "number",
+	bigint: "bigint",
+	object: "date"
+};
+const $ZodCheckLessThan = /* @__PURE__ */ $constructor("$ZodCheckLessThan", (inst, def) => {
+	$ZodCheck.init(inst, def);
+	const origin = numericOriginMap[typeof def.value];
+	inst._zod.onattach.push((inst$1) => {
+		const bag = inst$1._zod.bag;
+		const curr = (def.inclusive ? bag.maximum : bag.exclusiveMaximum) ?? Number.POSITIVE_INFINITY;
+		if (def.value < curr) if (def.inclusive) bag.maximum = def.value;
+		else bag.exclusiveMaximum = def.value;
+	});
+	inst._zod.check = (payload) => {
+		if (def.inclusive ? payload.value <= def.value : payload.value < def.value) return;
+		payload.issues.push({
+			origin,
+			code: "too_big",
+			maximum: typeof def.value === "object" ? def.value.getTime() : def.value,
+			input: payload.value,
+			inclusive: def.inclusive,
+			inst,
+			continue: !def.abort
+		});
+	};
+});
+const $ZodCheckGreaterThan = /* @__PURE__ */ $constructor("$ZodCheckGreaterThan", (inst, def) => {
+	$ZodCheck.init(inst, def);
+	const origin = numericOriginMap[typeof def.value];
+	inst._zod.onattach.push((inst$1) => {
+		const bag = inst$1._zod.bag;
+		const curr = (def.inclusive ? bag.minimum : bag.exclusiveMinimum) ?? Number.NEGATIVE_INFINITY;
+		if (def.value > curr) if (def.inclusive) bag.minimum = def.value;
+		else bag.exclusiveMinimum = def.value;
+	});
+	inst._zod.check = (payload) => {
+		if (def.inclusive ? payload.value >= def.value : payload.value > def.value) return;
+		payload.issues.push({
+			origin,
+			code: "too_small",
+			minimum: typeof def.value === "object" ? def.value.getTime() : def.value,
+			input: payload.value,
+			inclusive: def.inclusive,
+			inst,
+			continue: !def.abort
+		});
+	};
+});
+const $ZodCheckMultipleOf = /* @__PURE__ */ $constructor("$ZodCheckMultipleOf", (inst, def) => {
+	$ZodCheck.init(inst, def);
+	inst._zod.onattach.push((inst$1) => {
+		var _a$2;
+		(_a$2 = inst$1._zod.bag).multipleOf ?? (_a$2.multipleOf = def.value);
+	});
+	inst._zod.check = (payload) => {
+		if (typeof payload.value !== typeof def.value) throw new Error("Cannot mix number and bigint in multiple_of check.");
+		if (typeof payload.value === "bigint" ? payload.value % def.value === BigInt(0) : floatSafeRemainder(payload.value, def.value) === 0) return;
+		payload.issues.push({
+			origin: typeof payload.value,
+			code: "not_multiple_of",
+			divisor: def.value,
+			input: payload.value,
+			inst,
+			continue: !def.abort
+		});
+	};
+});
+const $ZodCheckNumberFormat = /* @__PURE__ */ $constructor("$ZodCheckNumberFormat", (inst, def) => {
+	$ZodCheck.init(inst, def);
+	def.format = def.format || "float64";
+	const isInt = def.format?.includes("int");
+	const origin = isInt ? "int" : "number";
+	const [minimum, maximum] = NUMBER_FORMAT_RANGES[def.format];
+	inst._zod.onattach.push((inst$1) => {
+		const bag = inst$1._zod.bag;
+		bag.format = def.format;
+		bag.minimum = minimum;
+		bag.maximum = maximum;
+		if (isInt) bag.pattern = integer;
+	});
+	inst._zod.check = (payload) => {
+		const input = payload.value;
+		if (isInt) {
+			if (!Number.isInteger(input)) {
+				payload.issues.push({
+					expected: origin,
+					format: def.format,
+					code: "invalid_type",
+					continue: false,
+					input,
+					inst
+				});
+				return;
+			}
+			if (!Number.isSafeInteger(input)) {
+				if (input > 0) payload.issues.push({
+					input,
+					code: "too_big",
+					maximum: Number.MAX_SAFE_INTEGER,
+					note: "Integers must be within the safe integer range.",
+					inst,
+					origin,
+					inclusive: true,
+					continue: !def.abort
+				});
+				else payload.issues.push({
+					input,
+					code: "too_small",
+					minimum: Number.MIN_SAFE_INTEGER,
+					note: "Integers must be within the safe integer range.",
+					inst,
+					origin,
+					inclusive: true,
+					continue: !def.abort
+				});
+				return;
+			}
+		}
+		if (input < minimum) payload.issues.push({
+			origin: "number",
+			input,
+			code: "too_small",
+			minimum,
+			inclusive: true,
+			inst,
+			continue: !def.abort
+		});
+		if (input > maximum) payload.issues.push({
+			origin: "number",
+			input,
+			code: "too_big",
+			maximum,
+			inclusive: true,
+			inst,
+			continue: !def.abort
+		});
+	};
 });
 const $ZodCheckMaxLength = /* @__PURE__ */ $constructor("$ZodCheckMaxLength", (inst, def) => {
 	var _a$2;
@@ -888,7 +1036,7 @@ var Doc = class {
 		const lines = arg.split("\n").filter((x) => x);
 		const minIndent = Math.min(...lines.map((x) => x.length - x.trimStart().length));
 		const dedented = lines.map((x) => x.slice(minIndent)).map((x) => " ".repeat(this.indent * 2) + x);
-		for (const line of dedented) this.content.push(line);
+		for (const line$1 of dedented) this.content.push(line$1);
 	}
 	compile() {
 		const F = Function;
@@ -1277,6 +1425,30 @@ const $ZodJWT = /* @__PURE__ */ $constructor("$ZodJWT", (inst, def) => {
 			continue: !def.abort
 		});
 	};
+});
+const $ZodNumber = /* @__PURE__ */ $constructor("$ZodNumber", (inst, def) => {
+	$ZodType.init(inst, def);
+	inst._zod.pattern = inst._zod.bag.pattern ?? number$1;
+	inst._zod.parse = (payload, _ctx) => {
+		if (def.coerce) try {
+			payload.value = Number(payload.value);
+		} catch (_) {}
+		const input = payload.value;
+		if (typeof input === "number" && !Number.isNaN(input) && Number.isFinite(input)) return payload;
+		const received = typeof input === "number" ? Number.isNaN(input) ? "NaN" : !Number.isFinite(input) ? "Infinity" : void 0 : void 0;
+		payload.issues.push({
+			expected: "number",
+			code: "invalid_type",
+			input,
+			inst,
+			...received ? { received } : {}
+		});
+		return payload;
+	};
+});
+const $ZodNumberFormat = /* @__PURE__ */ $constructor("$ZodNumberFormat", (inst, def) => {
+	$ZodCheckNumberFormat.init(inst, def);
+	$ZodNumber.init(inst, def);
 });
 const $ZodBoolean = /* @__PURE__ */ $constructor("$ZodBoolean", (inst, def) => {
 	$ZodType.init(inst, def);
@@ -2333,6 +2505,24 @@ function _isoDuration(Class, params) {
 	});
 }
 /* @__NO_SIDE_EFFECTS__ */
+function _number(Class, params) {
+	return new Class({
+		type: "number",
+		checks: [],
+		...normalizeParams(params)
+	});
+}
+/* @__NO_SIDE_EFFECTS__ */
+function _int(Class, params) {
+	return new Class({
+		type: "number",
+		check: "number_format",
+		abort: false,
+		format: "safeint",
+		...normalizeParams(params)
+	});
+}
+/* @__NO_SIDE_EFFECTS__ */
 function _boolean(Class, params) {
 	return new Class({
 		type: "boolean",
@@ -2348,6 +2538,50 @@ function _never(Class, params) {
 	return new Class({
 		type: "never",
 		...normalizeParams(params)
+	});
+}
+/* @__NO_SIDE_EFFECTS__ */
+function _lt(value, params) {
+	return new $ZodCheckLessThan({
+		check: "less_than",
+		...normalizeParams(params),
+		value,
+		inclusive: false
+	});
+}
+/* @__NO_SIDE_EFFECTS__ */
+function _lte(value, params) {
+	return new $ZodCheckLessThan({
+		check: "less_than",
+		...normalizeParams(params),
+		value,
+		inclusive: true
+	});
+}
+/* @__NO_SIDE_EFFECTS__ */
+function _gt(value, params) {
+	return new $ZodCheckGreaterThan({
+		check: "greater_than",
+		...normalizeParams(params),
+		value,
+		inclusive: false
+	});
+}
+/* @__NO_SIDE_EFFECTS__ */
+function _gte(value, params) {
+	return new $ZodCheckGreaterThan({
+		check: "greater_than",
+		...normalizeParams(params),
+		value,
+		inclusive: true
+	});
+}
+/* @__NO_SIDE_EFFECTS__ */
+function _multipleOf(value, params) {
+	return new $ZodCheckMultipleOf({
+		check: "multiple_of",
+		...normalizeParams(params),
+		value
 	});
 }
 /* @__NO_SIDE_EFFECTS__ */
@@ -2848,6 +3082,26 @@ const stringProcessor = (schema, ctx, _json, _params) => {
 			pattern: regex.source
 		}))];
 	}
+};
+const numberProcessor = (schema, ctx, _json, _params) => {
+	const json = _json;
+	const { minimum, maximum, format, multipleOf, exclusiveMaximum, exclusiveMinimum } = schema._zod.bag;
+	if (typeof format === "string" && format.includes("int")) json.type = "integer";
+	else json.type = "number";
+	const exMin = typeof exclusiveMinimum === "number" && exclusiveMinimum >= (minimum ?? Number.NEGATIVE_INFINITY);
+	const exMax = typeof exclusiveMaximum === "number" && exclusiveMaximum <= (maximum ?? Number.POSITIVE_INFINITY);
+	const legacy = ctx.target === "draft-04" || ctx.target === "openapi-3.0";
+	if (exMin) if (legacy) {
+		json.minimum = exclusiveMinimum;
+		json.exclusiveMinimum = true;
+	} else json.exclusiveMinimum = exclusiveMinimum;
+	else if (typeof minimum === "number") json.minimum = minimum;
+	if (exMax) if (legacy) {
+		json.maximum = exclusiveMaximum;
+		json.exclusiveMaximum = true;
+	} else json.exclusiveMaximum = exclusiveMaximum;
+	else if (typeof maximum === "number") json.maximum = maximum;
+	if (typeof multipleOf === "number") json.multipleOf = multipleOf;
 };
 const booleanProcessor = (_schema, _ctx, json, _params) => {
 	json.type = "boolean";
@@ -3438,6 +3692,74 @@ const ZodJWT = /* @__PURE__ */ $constructor("ZodJWT", (inst, def) => {
 	$ZodJWT.init(inst, def);
 	ZodStringFormat.init(inst, def);
 });
+const ZodNumber = /* @__PURE__ */ $constructor("ZodNumber", (inst, def) => {
+	$ZodNumber.init(inst, def);
+	ZodType.init(inst, def);
+	inst._zod.processJSONSchema = (ctx, json, params) => numberProcessor(inst, ctx, json, params);
+	_installLazyMethods(inst, "ZodNumber", {
+		gt(value, params) {
+			return this.check(_gt(value, params));
+		},
+		gte(value, params) {
+			return this.check(_gte(value, params));
+		},
+		min(value, params) {
+			return this.check(_gte(value, params));
+		},
+		lt(value, params) {
+			return this.check(_lt(value, params));
+		},
+		lte(value, params) {
+			return this.check(_lte(value, params));
+		},
+		max(value, params) {
+			return this.check(_lte(value, params));
+		},
+		int(params) {
+			return this.check(int(params));
+		},
+		safe(params) {
+			return this.check(int(params));
+		},
+		positive(params) {
+			return this.check(_gt(0, params));
+		},
+		nonnegative(params) {
+			return this.check(_gte(0, params));
+		},
+		negative(params) {
+			return this.check(_lt(0, params));
+		},
+		nonpositive(params) {
+			return this.check(_lte(0, params));
+		},
+		multipleOf(value, params) {
+			return this.check(_multipleOf(value, params));
+		},
+		step(value, params) {
+			return this.check(_multipleOf(value, params));
+		},
+		finite() {
+			return this;
+		}
+	});
+	const bag = inst._zod.bag;
+	inst.minValue = Math.max(bag.minimum ?? Number.NEGATIVE_INFINITY, bag.exclusiveMinimum ?? Number.NEGATIVE_INFINITY) ?? null;
+	inst.maxValue = Math.min(bag.maximum ?? Number.POSITIVE_INFINITY, bag.exclusiveMaximum ?? Number.POSITIVE_INFINITY) ?? null;
+	inst.isInt = (bag.format ?? "").includes("int") || Number.isSafeInteger(bag.multipleOf ?? .5);
+	inst.isFinite = true;
+	inst.format = bag.format ?? null;
+});
+function number(params) {
+	return _number(ZodNumber, params);
+}
+const ZodNumberFormat = /* @__PURE__ */ $constructor("ZodNumberFormat", (inst, def) => {
+	$ZodNumberFormat.init(inst, def);
+	ZodNumber.init(inst, def);
+});
+function int(params) {
+	return _int(ZodNumberFormat, params);
+}
 const ZodBoolean = /* @__PURE__ */ $constructor("ZodBoolean", (inst, def) => {
 	$ZodBoolean.init(inst, def);
 	ZodType.init(inst, def);
@@ -3830,21 +4152,58 @@ const health = union([
 	literal("error"),
 	literal("unknown")
 ]);
+const pluginRef = object({
+	moduleName: string(),
+	version: string().optional()
+});
+const panelDraft = object({
+	eventId: string().readonly(),
+	verdict: verdict.readonly(),
+	category: category.readonly(),
+	text: string().readonly()
+});
 const probeResult = object({
 	active: boolean().readonly(),
-	plugin: object({
-		moduleName: string(),
-		version: string().optional()
-	}).readonly().optional(),
+	plugin: pluginRef.readonly().optional(),
 	health: health.readonly(),
 	suggestedCategory: category.readonly(),
+	draft: panelDraft.readonly().optional(),
 	text: string().readonly()
 });
 const actionResult = object({
 	ok: boolean().readonly(),
-	text: string().readonly()
+	text: string().readonly(),
+	eventId: string().readonly().optional()
 });
 const textResult = string();
+const receiptStatus = union([
+	literal("received"),
+	literal("clustered"),
+	literal("reported"),
+	literal("fix-released"),
+	literal("retest-requested"),
+	literal("verified"),
+	literal("confirmed"),
+	literal("closed")
+]);
+const receiptBoxResult = object({
+	items: array(object({
+		eventId: string().readonly(),
+		plugin: pluginRef.readonly(),
+		summary: string().readonly(),
+		localState: union([
+			literal("draft"),
+			literal("queued"),
+			literal("submitted")
+		]).readonly(),
+		status: receiptStatus.readonly().optional(),
+		similarReports: number().int().nonnegative().readonly().optional(),
+		recommendedVersion: string().readonly().optional(),
+		trackingUrl: string().readonly().optional(),
+		unread: boolean().readonly()
+	}).readonly()).readonly(),
+	unreadCount: number().int().nonnegative().readonly()
+});
 const PLUGIN_LAB_REMOTE_DESCRIPTORS = [
 	{
 		id: "@oh-my-dsh/plugin-lab#pluginLab/probe",
@@ -3875,6 +4234,47 @@ const PLUGIN_LAB_REMOTE_DESCRIPTORS = [
 		sourceLocation: {
 			file: "src/panel-service.ts",
 			line: 24,
+			column: 3
+		}
+	},
+	{
+		id: "@oh-my-dsh/plugin-lab#pluginLab/select",
+		service: "pluginLab",
+		namespace: "pluginLab",
+		method: "select",
+		invocation: { kind: "direct" },
+		scope: {
+			context: "agent",
+			wire: "agentId"
+		},
+		parameters: [{
+			name: "agent",
+			wire: "agentId",
+			source: "lookup",
+			lookup: "agent",
+			codec: {
+				mode: "strict",
+				typeSymbol: "@deepseek-ai/dsh-session/types#SessionId",
+				schema: agentId
+			}
+		}, {
+			name: "plugin",
+			wire: "plugin",
+			source: "json",
+			codec: {
+				mode: "strict",
+				typeSymbol: "@oh-my-dsh/plugin-lab#TrialPluginRef",
+				schema: pluginRef
+			}
+		}],
+		result: {
+			mode: "strict",
+			typeSymbol: "@oh-my-dsh/plugin-lab#PluginLabPanelAction",
+			schema: actionResult
+		},
+		sourceLocation: {
+			file: "src/panel-service.ts",
+			line: 33,
 			column: 3
 		}
 	},
@@ -3965,6 +4365,120 @@ const PLUGIN_LAB_REMOTE_DESCRIPTORS = [
 		}
 	},
 	{
+		id: "@oh-my-dsh/plugin-lab#pluginLab/cancel",
+		service: "pluginLab",
+		namespace: "pluginLab",
+		method: "cancel",
+		invocation: { kind: "direct" },
+		scope: {
+			context: "agent",
+			wire: "agentId"
+		},
+		parameters: [{
+			name: "agent",
+			wire: "agentId",
+			source: "lookup",
+			lookup: "agent",
+			codec: {
+				mode: "strict",
+				typeSymbol: "@deepseek-ai/dsh-session/types#SessionId",
+				schema: agentId
+			}
+		}],
+		result: {
+			mode: "strict",
+			typeSymbol: "@oh-my-dsh/plugin-lab#PluginLabPanelAction",
+			schema: actionResult
+		},
+		sourceLocation: {
+			file: "src/panel-service.ts",
+			line: 47,
+			column: 3
+		}
+	},
+	{
+		id: "@oh-my-dsh/plugin-lab#pluginLab/discard",
+		service: "pluginLab",
+		namespace: "pluginLab",
+		method: "discard",
+		invocation: { kind: "direct" },
+		scope: {
+			context: "agent",
+			wire: "agentId"
+		},
+		parameters: [{
+			name: "agent",
+			wire: "agentId",
+			source: "lookup",
+			lookup: "agent",
+			codec: {
+				mode: "strict",
+				typeSymbol: "@deepseek-ai/dsh-session/types#SessionId",
+				schema: agentId
+			}
+		}, {
+			name: "eventId",
+			wire: "eventId",
+			source: "json",
+			codec: {
+				mode: "strict",
+				typeSymbol: "string",
+				schema: string()
+			}
+		}],
+		result: {
+			mode: "strict",
+			typeSymbol: "@oh-my-dsh/plugin-lab#PluginLabPanelAction",
+			schema: actionResult
+		},
+		sourceLocation: {
+			file: "src/panel-service.ts",
+			line: 51,
+			column: 3
+		}
+	},
+	{
+		id: "@oh-my-dsh/plugin-lab#pluginLab/receipts",
+		service: "pluginLab",
+		namespace: "pluginLab",
+		method: "receipts",
+		invocation: { kind: "direct" },
+		scope: {
+			context: "agent",
+			wire: "agentId"
+		},
+		parameters: [{
+			name: "agent",
+			wire: "agentId",
+			source: "lookup",
+			lookup: "agent",
+			codec: {
+				mode: "strict",
+				typeSymbol: "@deepseek-ai/dsh-session/types#SessionId",
+				schema: agentId
+			}
+		}, {
+			name: "markRead",
+			wire: "markRead",
+			source: "json",
+			codec: {
+				mode: "strict",
+				typeSymbol: "boolean",
+				schema: boolean()
+			}
+		}],
+		result: {
+			mode: "strict",
+			typeSymbol: "@oh-my-dsh/plugin-lab#ReceiptBoxSnapshot",
+			schema: receiptBoxResult
+		},
+		sourceLocation: {
+			file: "src/panel-service.ts",
+			line: 55,
+			column: 3
+		}
+	},
+	{
 		id: "@oh-my-dsh/plugin-lab#pluginLab/inbox",
 		service: "pluginLab",
 		namespace: "pluginLab",
@@ -4024,7 +4538,7 @@ var LabController = class {
 		};
 	};
 	setTrialActive(active) {
-		const { health: _health, suggestedCategory: _suggestedCategory, plugin: _plugin, activatedAt: _activatedAt,...view } = this.view;
+		const { health: _health, suggestedCategory: _suggestedCategory, plugin: _plugin, activatedAt: _activatedAt, manualSelection: _manualSelection,...view } = this.view;
 		this.publish({
 			...view,
 			active,
@@ -4041,17 +4555,19 @@ var LabController = class {
 			}
 		});
 		const settled = await this.call(() => this.remote.record(this.sessionId, verdict$1, category$1));
-		if (settled.ok && settled.value.ok) this.publish({
-			...this.view,
-			active: false,
-			pending: {
-				verdict: verdict$1,
-				category: category$1,
-				phase: "local",
-				text: settled.value.text
-			}
-		});
-		else this.publish({
+		if (settled.ok && settled.value.ok) {
+			this.publish({
+				...this.view,
+				active: true,
+				pending: {
+					verdict: verdict$1,
+					category: category$1,
+					phase: "local",
+					text: settled.value.text
+				}
+			});
+			await this.receipts(false);
+		} else this.publish({
 			...this.view,
 			pending: {
 				verdict: verdict$1,
@@ -4074,12 +4590,56 @@ var LabController = class {
 		const settled = await this.call(() => this.remote.join(this.sessionId));
 		this.publish({
 			...this.view,
+			active: !(settled.ok && settled.value.ok),
 			pending: {
 				...pending,
 				phase: settled.ok && settled.value.ok ? "joined" : "error",
 				text: settled.ok ? settled.value.text : settled.text
 			}
 		});
+		if (settled.ok && settled.value.ok) await this.receipts(false);
+	}
+	async selectPlugin(plugin) {
+		const settled = await this.call(() => this.remote.select(this.sessionId, plugin));
+		if (!settled.ok || !settled.value.ok) return settled.ok ? settled.value.text : settled.text;
+		const { pending: _pending,...view } = this.view;
+		this.publish({
+			...view,
+			active: true,
+			plugin,
+			manualSelection: true,
+			activatedAt: Date.now()
+		});
+		await this.probe();
+		return settled.value.text;
+	}
+	async cancel() {
+		const settled = await this.call(() => this.remote.cancel(this.sessionId));
+		if (!settled.ok || !settled.value.ok) return settled.ok ? settled.value.text : settled.text;
+		const { pending: _pending, plugin: _plugin, health: _health, suggestedCategory: _category, manualSelection: _manualSelection, activatedAt: _activatedAt,...view } = this.view;
+		this.publish({
+			...view,
+			active: false
+		});
+		await this.receipts(false);
+		return settled.value.text;
+	}
+	async discard(eventId) {
+		const settled = await this.call(() => this.remote.discard(this.sessionId, eventId));
+		if (settled.ok && settled.value.ok) await this.receipts(false);
+		return settled.ok ? settled.value.text : settled.text;
+	}
+	async receipts(markRead) {
+		const settled = await this.call(() => this.remote.receipts(this.sessionId, markRead));
+		if (!settled.ok) return this.view.receiptBox ?? {
+			items: [],
+			unreadCount: 0
+		};
+		this.publish({
+			...this.view,
+			receiptBox: settled.value
+		});
+		return settled.value;
 	}
 	async inbox() {
 		const result = await this.call(() => this.remote.inbox(this.sessionId));
@@ -4088,12 +4648,21 @@ var LabController = class {
 	async probe() {
 		const result = await this.call(() => this.remote.probe(this.sessionId));
 		if (!result.ok) return result.text;
+		const { pending: currentPending,...view } = this.view;
+		const draft = result.value.draft;
+		const pending = draft === void 0 ? currentPending?.phase === "joining" || currentPending?.phase === "joined" || currentPending?.phase === "error" ? currentPending : void 0 : {
+			verdict: draft.verdict,
+			category: draft.category,
+			phase: "local",
+			text: draft.text
+		};
 		this.publish({
-			...this.view,
+			...view,
 			active: result.value.active,
 			...result.value.plugin === void 0 ? {} : { plugin: result.value.plugin },
 			health: result.value.health,
-			suggestedCategory: result.value.suggestedCategory
+			suggestedCategory: result.value.suggestedCategory,
+			...pending === void 0 ? {} : { pending }
 		});
 		return result.value.text;
 	}
@@ -4184,7 +4753,7 @@ function pluginLabel(view) {
 	if (plugin === void 0) return "本次插件";
 	return `${plugin.moduleName}${plugin.version === void 0 ? "" : `#${plugin.version}`}`;
 }
-function ExperienceReceiptControls({ view, record, join, dismiss, surface }) {
+function ExperienceReceiptControls({ view, record, join, cancel, dismiss, surface }) {
 	const pending = view.pending;
 	const category$1 = view.suggestedCategory ?? "general";
 	const categoryName = categoryText(category$1);
@@ -4235,8 +4804,13 @@ function ExperienceReceiptControls({ view, record, join, dismiss, surface }) {
 	const working = pending.phase === "saving" || pending.phase === "joining";
 	return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
 		role: "region",
-		"aria-label": "体验回执",
-		style: receiptStyle,
+		"aria-label": "体验回执预览",
+		style: surface === "fallback" ? {
+			...receiptStyle,
+			width: "100%",
+			boxShadow: "none",
+			background: "#f8fafc"
+		} : receiptStyle,
 		children: [
 			/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
 				style: {
@@ -4267,20 +4841,43 @@ function ExperienceReceiptControls({ view, record, join, dismiss, surface }) {
 					alignItems: "center",
 					gap: 7
 				},
-				children: [pending.phase === "local" && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
-					type: "button",
-					disabled: working,
-					style: confirmButton,
-					onClick: () => {
-						join();
-					},
-					children: "确认发送"
-				}), (pending.phase === "local" || pending.phase === "joined" || pending.phase === "error") && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
-					type: "button",
-					style: quietButton,
-					onClick: dismiss,
-					children: pending.phase === "local" ? "稍后" : "完成"
-				})]
+				children: [
+					pending.phase === "local" && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+						type: "button",
+						disabled: working,
+						style: confirmButton,
+						onClick: () => {
+							join();
+						},
+						children: "确认发送"
+					}),
+					pending.phase === "local" && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("button", {
+						type: "button",
+						style: quietButton,
+						onClick: () => {
+							record(pending.verdict === "good" ? "bad" : "good", pending.category);
+						},
+						children: ["改为", pending.verdict === "good" ? "👎" : "👍"]
+					}),
+					pending.phase === "local" && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+						type: "button",
+						style: {
+							...quietButton,
+							border: "none",
+							background: "transparent"
+						},
+						onClick: () => {
+							cancel();
+						},
+						children: "取消"
+					}),
+					(pending.phase === "joined" || pending.phase === "error") && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+						type: "button",
+						style: quietButton,
+						onClick: dismiss,
+						children: "完成"
+					})
+				]
 			})
 		]
 	});
@@ -4304,44 +4901,519 @@ function latestAssistantAnchor(nodes) {
 
 //#endregion
 //#region src/client/PluginLabButton.tsx
-/**
-* Compact fallback for command/UI/crash plugins that produce no later Agent
-* reply. Once a finalized reply exists, its own action row owns the controls.
-*/
-function PluginLabButton({ useSession, usePluginLab, record, join, dismiss }) {
+const ink = "#0f172a";
+const muted = "#64748b";
+const line = "#dbe3ea";
+const paper = "#fffefb";
+const accent = "#0f766e";
+const toolbarButton = {
+	height: 26,
+	padding: "0 8px",
+	border: `1px solid ${line}`,
+	borderRadius: 8,
+	background: "#ffffff",
+	color: "#475569",
+	cursor: "pointer",
+	fontSize: 11,
+	fontWeight: 620,
+	letterSpacing: ".01em"
+};
+const sheetStyle = {
+	width: "min(440px, calc(100vw - 40px))",
+	boxSizing: "border-box",
+	padding: 12,
+	border: `1px solid ${line}`,
+	borderRadius: 12,
+	background: paper,
+	color: ink,
+	boxShadow: "0 12px 34px rgba(15, 23, 42, .14)",
+	fontSize: 12
+};
+const STATUS_LABEL = {
+	received: "已收到",
+	clustered: "正在聚合",
+	reported: "公开跟进",
+	confirmed: "维护者已确认",
+	"fix-released": "修复可用",
+	"retest-requested": "等待复测",
+	verified: "已验证",
+	closed: "已解决"
+};
+function itemLabel(item) {
+	if (item.localState === "draft") return "待确认";
+	if (item.localState === "queued") return "等待发送";
+	return item.status === void 0 ? "已提交" : STATUS_LABEL[item.status] ?? item.status;
+}
+function progressIndex(item) {
+	if (item.localState !== "submitted") return 0;
+	if (item.status === "clustered") return 1;
+	if (item.status === "reported" || item.status === "confirmed") return 2;
+	if (item.status === "fix-released" || item.status === "retest-requested") return 3;
+	if (item.status === "verified" || item.status === "closed") return 4;
+	return 0;
+}
+function pluginState(choice) {
+	if (!choice.enabled) return "已停用";
+	if (choice.fiberPhase === "failed") return "运行失败";
+	if (choice.fiberPhase === "active") return "运行中";
+	if (choice.fiberPhase === "loading") return "启动中";
+	return "已安装";
+}
+function safeTrackingUrl(value) {
+	return value?.startsWith("https://") ? value : void 0;
+}
+/** One persistent receipt entry for selection, feedback and progress. */
+function PluginLabButton({ useSession, usePluginLab, record, join, cancel, dismiss, selectPlugin, listPlugins, loadReceipts, discardReceipt }) {
 	const view = usePluginLab((value) => value);
 	const latest = useSession((snapshot) => latestAssistantAnchor(snapshot.nodes));
+	const [open, setOpen] = (0, react.useState)(false);
+	const [selecting, setSelecting] = (0, react.useState)(false);
+	const [plugins, setPlugins] = (0, react.useState)([]);
+	const [query, setQuery] = (0, react.useState)("");
+	const [busy, setBusy] = (0, react.useState)(false);
+	const [box, setBox] = (0, react.useState)({
+		items: [],
+		unreadCount: 0
+	});
 	const hasReplyAfterActivation = view.activatedAt !== void 0 && latest !== void 0 && latest.time >= view.activatedAt;
 	const failed = view.health === "error" || view.health === "unavailable";
-	if (!(view.active && failed || view.pending !== void 0) || hasReplyAfterActivation) return null;
-	return /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+	const showFallback = !hasReplyAfterActivation && (view.active && (failed || view.manualSelection === true) || view.pending !== void 0);
+	(0, react.useEffect)(() => {
+		loadReceipts(false).then(setBox);
+	}, [loadReceipts]);
+	(0, react.useEffect)(() => {
+		if (view.receiptBox !== void 0) setBox(view.receiptBox);
+	}, [view.receiptBox]);
+	const visiblePlugins = (0, react.useMemo)(() => {
+		const normalized = query.trim().toLocaleLowerCase();
+		return (normalized.length > 0 ? plugins.filter((plugin) => plugin.moduleName.toLocaleLowerCase().includes(normalized)) : plugins.filter((plugin) => plugin.fiberPhase === "failed" || plugin.fiberPhase === "active" && !plugin.moduleName.startsWith("@deepseek-ai/dsh-"))).slice(0, normalized.length > 0 ? 12 : 6);
+	}, [plugins, query]);
+	const beginSelection = () => {
+		setSelecting(true);
+		setBusy(true);
+		listPlugins().then(setPlugins).finally(() => {
+			setBusy(false);
+		});
+	};
+	const toggleReceipt = () => {
+		if (open) {
+			setOpen(false);
+			setSelecting(false);
+			setQuery("");
+			return;
+		}
+		setOpen(true);
+		setBusy(true);
+		loadReceipts(true).then((value) => {
+			setBox({
+				...value,
+				unreadCount: 0
+			});
+		}).finally(() => {
+			setBusy(false);
+		});
+	};
+	const entryLabel = [
+		"体验回执",
+		box.items.length > 0 ? String(box.items.length) : void 0,
+		box.unreadCount > 0 ? `${box.unreadCount} 新` : void 0,
+		showFallback && view.pending === void 0 ? "待反馈" : void 0
+	].filter((value) => value !== void 0).join(" · ");
+	return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
 		style: {
-			display: "flex",
+			display: "grid",
 			width: "100%",
-			justifyContent: "flex-end",
+			justifyItems: "end",
+			gap: 6,
 			padding: "2px 0"
 		},
-		children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)(ExperienceReceiptControls, {
-			view,
-			record,
-			join,
-			dismiss,
-			surface: "fallback"
-		})
+		children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+			type: "button",
+			style: toolbarButton,
+			"aria-expanded": open,
+			onClick: toggleReceipt,
+			children: entryLabel
+		}), open && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+			role: "region",
+			"aria-label": "体验回执",
+			style: sheetStyle,
+			children: [
+				/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+					style: {
+						display: "flex",
+						alignItems: "baseline",
+						justifyContent: "space-between",
+						gap: 10
+					},
+					children: [/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+						style: {
+							display: "grid",
+							gap: 1
+						},
+						children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("strong", {
+							style: { fontSize: 13 },
+							children: "体验回执"
+						}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("small", {
+							style: { color: muted },
+							children: "本机留存 · 打开时更新进度"
+						})]
+					}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+						type: "button",
+						"aria-label": "关闭体验回执",
+						style: {
+							...toolbarButton,
+							width: 24,
+							padding: 0,
+							border: 0,
+							background: "transparent",
+							fontSize: 15
+						},
+						onClick: toggleReceipt,
+						children: "×"
+					})]
+				}),
+				showFallback && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+					style: {
+						display: "block",
+						marginTop: 10
+					},
+					children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)(ExperienceReceiptControls, {
+						view,
+						record,
+						join,
+						cancel,
+						dismiss,
+						surface: "fallback"
+					})
+				}),
+				!showFallback && hasReplyAfterActivation && view.active && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("small", {
+					style: {
+						display: "block",
+						marginTop: 9,
+						color: muted
+					},
+					children: "当前插件的 👍 👎 已放在对应的 Agent 回复下方。"
+				}),
+				!selecting && view.pending === void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("button", {
+					type: "button",
+					style: {
+						display: "flex",
+						width: "100%",
+						minHeight: 34,
+						alignItems: "center",
+						justifyContent: "space-between",
+						marginTop: 10,
+						padding: "0 9px",
+						border: `1px solid ${line}`,
+						borderRadius: 8,
+						background: "#fff",
+						color: ink,
+						cursor: "pointer",
+						textAlign: "left",
+						fontSize: 12
+					},
+					onClick: beginSelection,
+					children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { children: view.plugin === void 0 ? "＋ 选择插件并反馈" : "＋ 反馈另一个插件" }), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("small", {
+						style: { color: muted },
+						children: "只读取插件名与运行状态"
+					})]
+				}),
+				selecting && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+					style: {
+						display: "grid",
+						gap: 7,
+						marginTop: 10,
+						padding: 9,
+						border: `1px solid ${line}`,
+						borderRadius: 9,
+						background: "#fff"
+					},
+					children: [
+						/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+							style: {
+								display: "flex",
+								alignItems: "baseline",
+								justifyContent: "space-between",
+								gap: 10
+							},
+							children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("strong", {
+								style: { fontSize: 12 },
+								children: "反馈哪个插件？"
+							}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+								type: "button",
+								style: {
+									...toolbarButton,
+									height: 22,
+									border: 0,
+									background: "transparent"
+								},
+								onClick: () => {
+									setSelecting(false);
+									setQuery("");
+								},
+								children: "收起"
+							})]
+						}),
+						/* @__PURE__ */ (0, react_jsx_runtime.jsx)("input", {
+							"aria-label": "搜索已安装插件",
+							value: query,
+							onChange: (event) => {
+								setQuery(event.currentTarget.value);
+							},
+							placeholder: "搜索公开插件名",
+							style: {
+								width: "100%",
+								height: 32,
+								boxSizing: "border-box",
+								padding: "0 9px",
+								border: `1px solid ${line}`,
+								borderRadius: 8,
+								background: "#fff",
+								color: ink,
+								outlineColor: accent,
+								fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+								fontSize: 12
+							}
+						}),
+						/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+							style: {
+								display: "grid",
+								gap: 2,
+								maxHeight: 220,
+								overflowY: "auto"
+							},
+							children: [
+								busy && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("small", {
+									style: {
+										padding: 8,
+										color: muted
+									},
+									children: "正在读取插件清单…"
+								}),
+								!busy && visiblePlugins.length === 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("small", {
+									style: {
+										padding: 8,
+										color: muted
+									},
+									children: query.length === 0 ? "输入插件名进行搜索。" : "没有匹配的已安装插件。"
+								}),
+								visiblePlugins.map((plugin) => /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("button", {
+									type: "button",
+									style: {
+										display: "grid",
+										gridTemplateColumns: "1fr auto",
+										gap: 10,
+										alignItems: "center",
+										minHeight: 38,
+										padding: "6px 8px",
+										border: 0,
+										borderRadius: 8,
+										background: plugin.fiberPhase === "failed" ? "#fff1f2" : "transparent",
+										color: ink,
+										textAlign: "left",
+										cursor: "pointer"
+									},
+									onClick: () => {
+										setBusy(true);
+										selectPlugin({ moduleName: plugin.moduleName }).then(() => {
+											setSelecting(false);
+											setQuery("");
+										}).finally(() => {
+											setBusy(false);
+										});
+									},
+									children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+										style: {
+											overflow: "hidden",
+											textOverflow: "ellipsis",
+											fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+											fontSize: 11
+										},
+										children: plugin.moduleName
+									}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("small", {
+										style: { color: plugin.fiberPhase === "failed" ? "#be123c" : muted },
+										children: pluginState(plugin)
+									})]
+								}, plugin.moduleName))
+							]
+						})
+					]
+				}),
+				/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+					style: {
+						display: "flex",
+						alignItems: "baseline",
+						justifyContent: "space-between",
+						gap: 10,
+						marginTop: 12,
+						paddingTop: 10,
+						borderTop: `1px solid ${line}`
+					},
+					children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("strong", {
+						style: { fontSize: 12 },
+						children: "我的回执"
+					}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("small", {
+						style: { color: muted },
+						children: box.items.length === 0 ? "暂无记录" : `${box.items.length} 条`
+					})]
+				}),
+				/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+					style: {
+						display: "grid",
+						gap: 8,
+						maxHeight: 300,
+						overflowY: "auto",
+						marginTop: 8
+					},
+					children: [
+						busy && !selecting && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("small", {
+							style: {
+								padding: 8,
+								color: muted
+							},
+							children: "正在更新回执…"
+						}),
+						!busy && box.items.length === 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("small", {
+							style: {
+								padding: 8,
+								color: muted
+							},
+							children: "还没有体验回执。"
+						}),
+						!busy && box.items.map((item) => {
+							const current = progressIndex(item);
+							const trackingUrl = safeTrackingUrl(item.trackingUrl);
+							return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+								style: {
+									display: "grid",
+									gap: 6,
+									padding: "9px 10px",
+									border: `1px solid ${line}`,
+									borderRadius: 10,
+									background: "#fff"
+								},
+								children: [
+									/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+										style: {
+											display: "flex",
+											alignItems: "center",
+											justifyContent: "space-between",
+											gap: 8
+										},
+										children: [/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("strong", {
+											style: {
+												minWidth: 0,
+												overflow: "hidden",
+												textOverflow: "ellipsis",
+												whiteSpace: "nowrap",
+												fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+												fontSize: 11
+											},
+											children: [item.plugin.moduleName, item.plugin.version === void 0 ? "" : `#${item.plugin.version}`]
+										}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("small", {
+											style: {
+												color: item.unread ? accent : muted,
+												fontWeight: item.unread ? 700 : 500
+											},
+											children: itemLabel(item)
+										})]
+									}),
+									/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+										style: {
+											color: "#334155",
+											lineHeight: 1.45
+										},
+										children: item.summary
+									}),
+									/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+										"aria-label": `进度 ${current + 1}/5`,
+										style: {
+											display: "grid",
+											gridTemplateColumns: "repeat(5, 1fr)",
+											gap: 3
+										},
+										children: [
+											0,
+											1,
+											2,
+											3,
+											4
+										].map((index) => /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { style: {
+											height: 3,
+											borderRadius: 99,
+											background: index <= current ? accent : "#e2e8f0"
+										} }, index))
+									}),
+									/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+										style: {
+											display: "flex",
+											alignItems: "center",
+											gap: 9,
+											color: muted
+										},
+										children: [
+											item.similarReports !== void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("small", { children: [
+												"同类 ",
+												item.similarReports,
+												" 条"
+											] }),
+											item.recommendedVersion !== void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("small", { children: ["建议版本 ", item.recommendedVersion] }),
+											trackingUrl !== void 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("a", {
+												href: trackingUrl,
+												target: "_blank",
+												rel: "noreferrer",
+												style: { color: accent },
+												children: "公开进展"
+											}),
+											item.localState === "draft" && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+												type: "button",
+												style: {
+													...toolbarButton,
+													height: 22,
+													marginLeft: "auto",
+													border: 0,
+													background: "transparent"
+												},
+												onClick: () => {
+													setBusy(true);
+													discardReceipt(item.eventId).then(() => loadReceipts(false)).then(setBox).finally(() => {
+														setBusy(false);
+													});
+												},
+												children: "移除草稿"
+											})
+										]
+									})
+								]
+							}, item.eventId);
+						})
+					]
+				})
+			]
+		})]
 	});
 }
 
 //#endregion
 //#region src/client/ExperienceResultCard.tsx
 /** Tiny feedback controls attached only to the first finalized reply after trial activation. */
-function ExperienceResultCard({ messageId, useSession, usePluginLab, record, join, dismiss }) {
+function ExperienceResultCard({ messageId, useSession, usePluginLab, record, join, cancel, refresh, dismiss }) {
 	const view = usePluginLab((value) => value);
 	const anchor = useSession((snapshot) => latestAssistantAnchor(snapshot.nodes));
-	if (!(view.activatedAt !== void 0 && anchor !== void 0 && anchor.time >= view.activatedAt && anchor.messageId === messageId) || !view.active && view.pending === void 0) return null;
+	const belongsToTrial = view.activatedAt !== void 0 && anchor !== void 0 && anchor.time >= view.activatedAt && anchor.messageId === messageId;
+	(0, react.useEffect)(() => {
+		if (belongsToTrial) refresh();
+	}, [
+		belongsToTrial,
+		messageId,
+		refresh
+	]);
+	if (!belongsToTrial || !view.active && view.pending === void 0) return null;
 	return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(ExperienceReceiptControls, {
 		view,
 		record,
 		join,
+		cancel,
 		dismiss,
 		surface: "reply"
 	});
@@ -4502,6 +5574,18 @@ function apply(ctx) {
 		}
 		return controller;
 	};
+	const listPlugins = async () => {
+		const result = await ctx.get("remote.pluginInventory").list();
+		if (!result.ok) return [];
+		return result.value.entries.filter((entry) => entry.moduleName !== "@oh-my-dsh/plugin-lab").map((entry) => ({
+			moduleName: entry.moduleName,
+			enabled: entry.enabled,
+			fiberPhase: entry.fiberPhase
+		})).sort((left, right) => {
+			const priority = (value) => value.fiberPhase === "failed" ? 0 : value.fiberPhase === "active" ? 1 : 2;
+			return priority(left) - priority(right) || left.moduleName.localeCompare(right.moduleName);
+		});
+	};
 	ctx.on("command/executed", (sessionId, name, result) => {
 		if (result.kind !== "success") return;
 		if (name === "omdsh-start" || name === "omdsh-retest") {
@@ -4509,7 +5593,6 @@ function apply(ctx) {
 			controller.setTrialActive(true);
 			controller.probe();
 		}
-		if (name === "omdsh-result" || name === "omdsh-feedback") controllerFor(sessionId).setTrialActive(false);
 	});
 	ctx.slots.inject("conversation.input.dock", () => ctx.slots.register({
 		name: "conversation.input.dock",
@@ -4521,7 +5604,14 @@ function apply(ctx) {
 				hooks: { pluginLab: controller },
 				record: (outcome, category$1) => controller.record(outcome, category$1),
 				join: () => controller.join(),
-				dismiss: () => controller.dismiss()
+				cancel: async () => {
+					await controller.cancel();
+				},
+				dismiss: () => controller.dismiss(),
+				selectPlugin: (plugin) => controller.selectPlugin(plugin),
+				listPlugins,
+				loadReceipts: (markRead) => controller.receipts(markRead),
+				discardReceipt: (eventId) => controller.discard(eventId)
 			};
 		}
 	}, PluginLabButton));
@@ -4535,6 +5625,10 @@ function apply(ctx) {
 				hooks: { pluginLab: controller },
 				record: (outcome, category$1) => controller.record(outcome, category$1),
 				join: () => controller.join(),
+				cancel: async () => {
+					await controller.cancel();
+				},
+				refresh: () => controller.probe(),
 				dismiss: () => controller.dismiss()
 			};
 		}

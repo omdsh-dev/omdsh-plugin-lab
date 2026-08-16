@@ -1,6 +1,7 @@
 import { FEEDBACK_CATEGORIES, } from './protocol.js';
 export const AGENT_ASSESSMENT_TOOL = 'omdsh_analyze_plugin_experience';
 export const AGENT_PREVIEW_TOOL = 'omdsh_preview_plugin_feedback';
+export const AGENT_PREPARE_TOOL = 'omdsh_prepare_plugin_receipt';
 const PARAMETERS = {
     type: 'object',
     properties: {},
@@ -45,6 +46,14 @@ const PREVIEW_PARAMETERS = {
     required: ['experience', 'category'],
     additionalProperties: false,
 };
+const PREPARE_PARAMETERS = {
+    type: 'object',
+    properties: {
+        experience: { type: 'string', enum: ['good', 'mixed', 'bad'] },
+    },
+    required: ['experience'],
+    additionalProperties: false,
+};
 const PREVIEW_OUTPUT = {
     type: 'object',
     properties: {
@@ -87,6 +96,17 @@ function previewArguments(value) {
         experience: row.experience,
         category: row.category,
     };
+}
+function prepareArguments(value) {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+        throw new TypeError('receipt preparation accepts one finite verdict only');
+    }
+    const row = value;
+    if (Object.keys(row).join(',') !== 'experience'
+        || !['good', 'mixed', 'bad'].includes(row.experience)) {
+        throw new TypeError('receipt preparation accepts one finite verdict only');
+    }
+    return row.experience;
 }
 /** A raw ToolDefinition is used so the rc.6 input schema is closed as well as the output. */
 export function createAgentAssessmentTool(assess) {
@@ -134,6 +154,30 @@ export function createAgentPreviewTool(preview) {
             return preview(exec.agent, parsed.experience, parsed.category);
         },
         isConcurrencySafe: () => true,
+    };
+}
+/**
+ * Agent orchestration tool: it may prepare/replace one local draft, but never
+ * sends it. The Host UI remains the only confirmation capability.
+ */
+export function createAgentPrepareTool(prepare) {
+    return {
+        name: AGENT_PREPARE_TOOL,
+        description: [
+            'Prepare or replace one local Plugin Lab receipt after the user expresses a finite verdict.',
+            'The current trial supplies the public plugin identity; the Host status supplies the category.',
+            'Accept only good, mixed, or bad. Never include task, conversation, log, path, prompt, output, or error text.',
+            'This creates a local preview only and never uploads. Tell the user to inspect the card and click confirm.',
+        ].join(' '),
+        parameters: PREPARE_PARAMETERS,
+        output: {
+            schema: PREVIEW_OUTPUT,
+            render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
+        },
+        async execute(args, exec) {
+            return prepare(exec.agent, prepareArguments(args));
+        },
+        isConcurrencySafe: () => false,
     };
 }
 //# sourceMappingURL=agent-tool.js.map

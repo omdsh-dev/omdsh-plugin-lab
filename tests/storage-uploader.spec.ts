@@ -35,7 +35,7 @@ describe('strict local outbox and uploader', () => {
     store.append(value)
     expect(statSync(store.eventsPath).mode & 0o777).toBe(0o600)
     expect(Object.keys(store).sort()).toEqual([
-      'dataDir', 'eventsPath', 'receiptSeenPath', 'receiptsPath', 'shareRequestsPath',
+      'dataDir', 'draftDiscardsPath', 'eventsPath', 'receiptSeenPath', 'receiptsPath', 'shareRequestsPath',
     ])
     const stored = readFileSync(store.eventsPath, 'utf8')
     expect(stored).not.toContain('participant')
@@ -45,6 +45,19 @@ describe('strict local outbox and uploader', () => {
     store.requestShare(value.event.eventId)
     expect(store.pending()).toHaveLength(1)
     expect(store.drafts()).toHaveLength(0)
+  })
+
+  it('uses a local tombstone to remove an unsubmitted draft without rewriting history', () => {
+    const root = mkdtempSync(join(tmpdir(), 'omdsh-plugin-lab-'))
+    const store = new FeedbackStore(join(root, 'data'))
+    const value = record()
+    store.append(value)
+    expect(store.discardDraft(value.event.eventId)).toBe(true)
+    expect(store.drafts()).toEqual([])
+    expect(store.visibleRecords()).toEqual([])
+    expect(store.records()).toHaveLength(1)
+    expect(readFileSync(store.draftDiscardsPath, 'utf8')).toContain(value.event.eventId)
+    expect(store.discardDraft(value.event.eventId)).toBe(false)
   })
 
   it('posts the exact closed packet and persists a report-scoped receipt', async () => {

@@ -8,9 +8,9 @@ Plugin Lab v3 允许上传一个经过用户确认的体验大类，但不允许
 2. **有限字母表**：网络包只允许协议列出的字段；未知字段直接拒绝，不做“接收后脱敏”。
 3. **没有自由摘要字段**：`summary`、`note`、`reason`、`message` 等字段全部拒绝。可读摘要只由固定模板渲染。
 4. **宿主真源**：探活只读取 DSH Host 的 Loader/Fiber 状态，不调用目标插件，也不进行文件、网络或数据库 I/O。
-5. **Agent 安全胶囊**：探活工具输入为空，输出只有公开插件名/版本、Host 状态、建议大类和允许枚举；预览工具只接受 `experience` 和 `category`。
+5. **Agent 安全胶囊**：探活工具输入为空，输出只有公开插件名/版本、Host 状态、建议大类和允许枚举；预览工具只接受 `experience` 和 `category`；本地准备工具只接受用户明确表达的 `experience`。
 6. **最小 UI 锚点**：客户端只读取最终回复的 `messageId` 和时间，把按钮挂到试用后的回复；不读取内容块、Tool 参数或 Tool 结果。
-7. **主观状态不臆测**：只有用户点击好用/不好用才能产生 `source=user_confirmed` 的本地记录；健康状态不能自动转换为体验评价。
+7. **主观状态不臆测**：只有用户点击好用/不好用，或向 Agent 明确表达同一有限评价，才能产生 `source=user_confirmed` 的本地记录；没有明确评价时 Agent 必须询问，健康状态不能自动转换为体验评价。
 8. **预览后提交**：体验和 Agent 建议的大类先写入本地草稿并显示完整预览；发送是独立的逐条确认动作。
 9. **无稳定身份**：没有用户、账号、设备、安装、Session 或跨报告匿名 ID。
 10. **无日志派生详情**：不接受日志摘要、错误类型、错误码、堆栈、指纹或哈希；崩溃只能成为 `health=error`。
@@ -28,6 +28,7 @@ reliability | performance | result_quality | general
 ## 必须通过的攻击测试
 
 - 向 Agent 预览工具加入 `summary/task/log/prompt` 参数必须拒绝整个调用。
+- 向 Agent 本地准备工具加入除 `experience` 外的字段必须拒绝整个调用；准备草稿不能获得上传能力。
 - 向上传包加入 `summary/note/log/stack/signals/environment/participantId/occurredAt` 必须拒绝整个请求。
 - 把邮箱、Token、绝对路径、聊天文本放入会话和异常；本地包与固定摘要不得出现 canary。
 - 相同公开插件、健康状态、体验和大类下，更换私密任务内容不能改变序列化包。

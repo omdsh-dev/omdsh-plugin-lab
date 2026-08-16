@@ -1,10 +1,13 @@
 import type { ClientRemote } from '@deepseek-ai/dsh-api-remotes/client'
 import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
-import type { ExperienceVerdict, FeedbackCategory, HealthStatus, TrialPluginRef } from '../protocol.js'
+import type {
+  ExperienceVerdict, FeedbackCategory, HealthStatus, ReceiptBoxSnapshot, TrialPluginRef,
+} from '../protocol.js'
 
 /** Silent panel Remote surface. It does not create durable command nodes. */
-export type PluginLabRemote = Pick<ClientRemote['pluginLab'], 'probe' | 'record' | 'join' | 'inbox'>
+export type PluginLabRemote = Pick<ClientRemote['pluginLab'],
+  'probe' | 'select' | 'record' | 'join' | 'cancel' | 'discard' | 'receipts' | 'inbox'>
 
 export interface PendingResult {
   readonly verdict: ExperienceVerdict
@@ -18,9 +21,11 @@ export interface LabView {
   /** Local activation boundary used only to attach controls to a later reply. */
   readonly activatedAt?: number
   readonly plugin?: TrialPluginRef
+  readonly manualSelection?: boolean
   readonly health?: HealthStatus
   readonly suggestedCategory?: FeedbackCategory
   readonly pending?: PendingResult
+  readonly receiptBox?: ReceiptBoxSnapshot
 }
 
 const INITIAL_VIEW: LabView = Object.freeze({ active: false })
@@ -47,6 +52,7 @@ export class LabController implements HostObservable<LabView> {
       suggestedCategory: _suggestedCategory,
       plugin: _plugin,
       activatedAt: _activatedAt,
+      manualSelection: _manualSelection,
       ...view
     } = this.view
     this.publish({ ...view, active, ...(active ? { activatedAt: Date.now() } : {}) })
@@ -61,9 +67,10 @@ export class LabController implements HostObservable<LabView> {
     if (settled.ok && settled.value.ok) {
       this.publish({
         ...this.view,
-        active: false,
+        active: true,
         pending: { verdict, category, phase: 'local', text: settled.value.text },
       })
+      await this.receipts(false)
     } else {
       this.publish({
         ...this.view,
@@ -84,12 +91,59 @@ export class LabController implements HostObservable<LabView> {
     const settled = await this.call(() => this.remote.join(this.sessionId))
     this.publish({
       ...this.view,
+      active: !(settled.ok && settled.value.ok),
       pending: {
         ...pending,
         phase: settled.ok && settled.value.ok ? 'joined' : 'error',
         text: settled.ok ? settled.value.text : settled.text,
       },
     })
+    if (settled.ok && settled.value.ok) await this.receipts(false)
+  }
+
+  async selectPlugin(plugin: TrialPluginRef): Promise<string> {
+    const settled = await this.call(() => this.remote.select(this.sessionId, plugin))
+    if (!settled.ok || !settled.value.ok) return settled.ok ? settled.value.text : settled.text
+    const { pending: _pending, ...view } = this.view
+    this.publish({
+      ...view,
+      active: true,
+      plugin,
+      manualSelection: true,
+      activatedAt: Date.now(),
+    })
+    await this.probe()
+    return settled.value.text
+  }
+
+  async cancel(): Promise<string> {
+    const settled = await this.call(() => this.remote.cancel(this.sessionId))
+    if (!settled.ok || !settled.value.ok) return settled.ok ? settled.value.text : settled.text
+    const {
+      pending: _pending,
+      plugin: _plugin,
+      health: _health,
+      suggestedCategory: _category,
+      manualSelection: _manualSelection,
+      activatedAt: _activatedAt,
+      ...view
+    } = this.view
+    this.publish({ ...view, active: false })
+    await this.receipts(false)
+    return settled.value.text
+  }
+
+  async discard(eventId: string): Promise<string> {
+    const settled = await this.call(() => this.remote.discard(this.sessionId, eventId))
+    if (settled.ok && settled.value.ok) await this.receipts(false)
+    return settled.ok ? settled.value.text : settled.text
+  }
+
+  async receipts(markRead: boolean): Promise<ReceiptBoxSnapshot> {
+    const settled = await this.call(() => this.remote.receipts(this.sessionId, markRead))
+    if (!settled.ok) return this.view.receiptBox ?? { items: [], unreadCount: 0 }
+    this.publish({ ...this.view, receiptBox: settled.value })
+    return settled.value
   }
 
   async inbox(): Promise<string> {
@@ -100,12 +154,25 @@ export class LabController implements HostObservable<LabView> {
   async probe(): Promise<string> {
     const result = await this.call(() => this.remote.probe(this.sessionId))
     if (!result.ok) return result.text
+    const { pending: currentPending, ...view } = this.view
+    const draft = result.value.draft
+    const pending = draft === undefined
+      ? currentPending?.phase === 'joining' || currentPending?.phase === 'joined' || currentPending?.phase === 'error'
+        ? currentPending
+        : undefined
+      : {
+          verdict: draft.verdict,
+          category: draft.category,
+          phase: 'local' as const,
+          text: draft.text,
+        }
     this.publish({
-      ...this.view,
+      ...view,
       active: result.value.active,
       ...(result.value.plugin === undefined ? {} : { plugin: result.value.plugin }),
       health: result.value.health,
       suggestedCategory: result.value.suggestedCategory,
+      ...(pending === undefined ? {} : { pending }),
     })
     return result.value.text
   }

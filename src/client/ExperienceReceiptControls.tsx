@@ -7,6 +7,7 @@ export interface ExperienceReceiptControlsProps {
   readonly view: LabView
   readonly record: (verdict: ExperienceVerdict, category: FeedbackCategory) => Promise<void>
   readonly join: () => Promise<void>
+  readonly cancel: () => Promise<void>
   readonly dismiss: () => void
   readonly surface: 'reply' | 'fallback'
 }
@@ -57,7 +58,7 @@ function pluginLabel(view: LabView): string {
 }
 
 export function ExperienceReceiptControls({
-  view, record, join, dismiss, surface,
+  view, record, join, cancel, dismiss, surface,
 }: ExperienceReceiptControlsProps) {
   const pending = view.pending
   const category = view.suggestedCategory ?? 'general'
@@ -97,7 +98,13 @@ export function ExperienceReceiptControls({
 
   const working = pending.phase === 'saving' || pending.phase === 'joining'
   return (
-    <span role="region" aria-label="体验回执" style={receiptStyle}>
+    <span
+      role="region"
+      aria-label="体验回执预览"
+      style={surface === 'fallback'
+        ? { ...receiptStyle, width: '100%', boxShadow: 'none', background: '#f8fafc' }
+        : receiptStyle}
+    >
       <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
         <strong>{pending.phase === 'joined' ? '回执已发送' : '发送前预览'}</strong>
         <small style={{ color: '#64748b' }}>
@@ -122,9 +129,23 @@ export function ExperienceReceiptControls({
             确认发送
           </button>
         )}
-        {(pending.phase === 'local' || pending.phase === 'joined' || pending.phase === 'error') && (
+        {pending.phase === 'local' && (
+          <button
+            type="button"
+            style={quietButton}
+            onClick={() => { void record(pending.verdict === 'good' ? 'bad' : 'good', pending.category) }}
+          >
+            改为{pending.verdict === 'good' ? '👎' : '👍'}
+          </button>
+        )}
+        {pending.phase === 'local' && (
+          <button type="button" style={{ ...quietButton, border: 'none', background: 'transparent' }} onClick={() => { void cancel() }}>
+            取消
+          </button>
+        )}
+        {(pending.phase === 'joined' || pending.phase === 'error') && (
           <button type="button" style={quietButton} onClick={dismiss}>
-            {pending.phase === 'local' ? '稍后' : '完成'}
+            完成
           </button>
         )}
       </span>
