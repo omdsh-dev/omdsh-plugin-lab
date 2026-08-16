@@ -20,6 +20,7 @@ function remote(overrides: Partial<PluginLabRemote> = {}): PluginLabRemote {
     probe: async () => success({ active: false, health: 'unknown' as const, suggestedCategory: 'general' as const, text: '未选择试用插件' }),
     select: async () => success({ ok: true, text: '已选择插件' }),
     record: async () => success({ ok: true, text: '待确认' }),
+    revise: async (_sessionId, summary) => success({ ok: true, text: `脱敏 Summary：${summary}`, summary }),
     join: async () => success({ ok: true, text: '已提交' }),
     cancel: async () => success({ ok: true, text: '已取消' }),
     discard: async (_sessionId, eventId) => success({ ok: true, text: '已移除', eventId }),
@@ -42,6 +43,7 @@ function propsFor(
     usePluginLab,
     useSession: <T,>(selector: (snapshot: ConversationSnapshot) => T): T => selector({ nodes } as ConversationSnapshot),
     record: (verdict: ExperienceVerdict, category: FeedbackCategory) => controller.record(verdict, category),
+    revise: (summary: string) => controller.revise(summary),
     join: () => controller.join(),
     cancel: () => controller.cancel().then(() => undefined),
     dismiss: () => { controller.dismiss() },
@@ -85,6 +87,9 @@ describe('rc.6 lightweight experience receipt', () => {
       ok: true,
       text: `脱敏 Summary：@example/plugin#1.0.0 · ${verdict} · ${category}`,
     }))
+    const revise: PluginLabRemote['revise'] = vi.fn(async (_sessionId, summary) => success({
+      ok: true, text: `脱敏 Summary：${summary}`, summary,
+    }))
     const join: PluginLabRemote['join'] = vi.fn(async () => success({ ok: true, text: '已提交 · clustered' }))
     const controller = new LabController(remote({
       probe: async () => success({
@@ -95,6 +100,7 @@ describe('rc.6 lightweight experience receipt', () => {
         text: '@example/plugin · 当前暂不可用',
       }),
       record,
+      revise,
       join,
     }), SESSION)
     controller.setTrialActive(true)
@@ -110,22 +116,22 @@ describe('rc.6 lightweight experience receipt', () => {
     expect(record).toHaveBeenLastCalledWith(SESSION, 'bad', 'startup')
     expect(screen.getByText('反馈大类：启动')).toBeDefined()
     expect(screen.getByText(/脱敏 Summary/)).toBeDefined()
-    expect(screen.getByText(/未读取或附带任务、对话正文/)).toBeDefined()
+    expect(screen.getByText(/仅发送这句摘要和只读标签/)).toBeDefined()
 
     fireEvent.click(screen.getByRole('button', { name: '修改' }))
     expect(screen.queryByRole('button', { name: '确认发送' })).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: /一般/ }))
-    fireEvent.change(screen.getByRole('combobox', { name: '问题大类' }), {
-      target: { value: 'compatibility' },
-    })
-    expect(screen.getByText(/在“兼容性”方面/)).toBeDefined()
-    expect(screen.getByText(/用户体验为“一般”/)).toBeDefined()
+    const editor = screen.getByRole('textbox', { name: '编辑脱敏 Summary' })
+    fireEvent.change(editor, { target: { value: '/Users/alice/private.log' } })
+    fireEvent.click(screen.getByRole('button', { name: '应用修改' }))
+    expect(screen.getByRole('alert').textContent).toContain('不能包含本地路径')
+    expect(revise).not.toHaveBeenCalled()
+    fireEvent.change(editor, { target: { value: '插件启动偏慢，但交互仍然清楚。' } })
     expect(record).toHaveBeenCalledTimes(1)
     expect(join).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: '应用修改' }))
-    await screen.findByText('反馈大类：兼容性')
-    expect(record).toHaveBeenLastCalledWith(SESSION, 'mixed', 'compatibility')
-    expect(record).toHaveBeenCalledTimes(2)
+    await screen.findByText(/插件启动偏慢，但交互仍然清楚/)
+    expect(revise).toHaveBeenLastCalledWith(SESSION, '插件启动偏慢，但交互仍然清楚。')
+    expect(record).toHaveBeenCalledTimes(1)
     expect(join).not.toHaveBeenCalled()
 
     fireEvent.click(screen.getByRole('button', { name: '确认发送' }))

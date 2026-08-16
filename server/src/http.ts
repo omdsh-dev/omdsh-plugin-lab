@@ -50,7 +50,7 @@ async function body(request: IncomingMessage): Promise<unknown> {
   for await (const chunk of request) {
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
     size += buffer.length
-    if (size > 1_024) throw new TypeError('request body exceeds 1 KiB')
+    if (size > 2_048) throw new TypeError('request body exceeds 2 KiB')
     chunks.push(buffer)
   }
   try {

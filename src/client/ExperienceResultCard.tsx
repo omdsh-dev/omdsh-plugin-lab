@@ -8,6 +8,7 @@ import { latestAssistantAnchor } from './message-anchor.js'
 export interface LabInjected {
   hooks: { pluginLab: LabController }
   record: (verdict: ExperienceVerdict, category: FeedbackCategory) => Promise<void>
+  revise: (summary: string) => Promise<void>
   join: () => Promise<void>
   cancel: () => Promise<void>
   refresh: () => Promise<string>
@@ -20,7 +21,7 @@ export type ExperienceResultCardProps =
 
 /** Tiny feedback controls attached only to the first finalized reply after trial activation. */
 export function ExperienceResultCard({
-  messageId, useSession, usePluginLab, record, join, cancel, refresh, dismiss,
+  messageId, useSession, usePluginLab, record, revise, join, cancel, refresh, dismiss,
 }: ExperienceResultCardProps) {
   const view = usePluginLab(value => value)
   const anchor = useSession(snapshot => latestAssistantAnchor(snapshot.nodes))
@@ -38,6 +39,7 @@ export function ExperienceResultCard({
     <ExperienceReceiptControls
       view={view}
       record={record}
+      revise={revise}
       join={join}
       cancel={cancel}
       dismiss={dismiss}

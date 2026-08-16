@@ -17,6 +17,15 @@ function event(experience: 'good' | 'mixed' | 'bad' = 'bad', eventId = crypto.ra
   } as const
 }
 
+function editedEvent(summary = '插件启动偏慢，但交互仍然清楚。') {
+  return {
+    ...event(),
+    schemaVersion: 4,
+    summary,
+    summarySource: 'user_edited',
+  } as const
+}
+
 function service(repository = new MemoryRepository(), publisher?: { publish: (cluster: never) => Promise<string> }) {
   return new FeedbackService(repository, {
     followSecret: 'follow-secret-long-enough',
@@ -59,9 +68,11 @@ describe('task-agnostic summary feedback flywheel service', () => {
     expect(clusterKey({ ...accepted, experience: 'good' })).not.toBe(clusterKey(accepted))
     expect(clusterKey({ ...accepted, health: 'error' })).not.toBe(clusterKey(accepted))
     expect(clusterKey({ ...accepted, category: 'performance' })).not.toBe(clusterKey(accepted))
+    expect(clusterKey(acceptEvent(editedEvent('启动偏慢。'))))
+      .toBe(clusterKey(acceptEvent(editedEvent('界面不够清楚。'))))
   })
 
-  it('rejects old telemetry, log-derived fields, free text and unknown fields fail closed', () => {
+  it('keeps legacy v3 closed and accepts only bounded safe text in v4', () => {
     const attempts = [
       { ...event(), note: 'CANARY_SECRET' },
       { ...event(), summary: 'CANARY_PRIVATE_TASK' },
@@ -76,6 +87,23 @@ describe('task-agnostic summary feedback flywheel service', () => {
     expect(() => acceptEvent({ ...event(), schemaVersion: 2 })).toThrow('unsupported event schema')
     expect(() => acceptEvent({ ...event(), category: 'private-task-summary' })).toThrow('category is invalid')
     expect(() => acceptEvent({ ...event(), source: 'agent_inferred' })).toThrow('source is invalid')
+    expect(acceptEvent(editedEvent())).toMatchObject({
+      schemaVersion: 4,
+      summary: '插件启动偏慢，但交互仍然清楚。',
+      summarySource: 'user_edited',
+    })
+    expect(acceptEvent({
+      ...event(),
+      schemaVersion: 4,
+      summary: '@example/search#1.0.0 在“稳定性”方面：运行正常，用户体验为“不好用”。',
+      summarySource: 'template',
+    })).toMatchObject({ schemaVersion: 4, summarySource: 'template' })
+    for (const unsafe of [
+      '/Users/alice/private.log', 'https://private.example/task', 'token=CANARY_SECRET',
+      'Error: failed at run (/tmp/private.ts:12:4)', 'alice@example.com',
+    ]) expect(() => acceptEvent(editedEvent(unsafe))).toThrow()
+    expect(() => acceptEvent({ ...editedEvent(), summarySource: 'template' }))
+      .toThrow('template summary does not match finite fields')
   })
 
   it('publishes only an aggregate after the configured threshold', async () => {

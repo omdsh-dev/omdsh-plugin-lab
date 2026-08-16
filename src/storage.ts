@@ -35,10 +35,11 @@ export function defaultDataDir(): string {
   return join(dshHome, 'omdsh-plugin-lab')
 }
 
-/** Local outbox for the same closed packet sent over the wire. It stores no logs or identifiers. */
+/** Local outbox for the same bounded packet sent over the wire. It stores no logs or identifiers. */
 export class FeedbackStore {
   readonly dataDir: string
   readonly eventsPath: string
+  readonly legacyEventsPath: string
   readonly receiptsPath: string
   readonly shareRequestsPath: string
   readonly receiptSeenPath: string
@@ -47,7 +48,8 @@ export class FeedbackStore {
   constructor(dataDir = defaultDataDir()) {
     if (!isAbsolute(dataDir)) throw new TypeError('plugin-lab: dataDir must be an absolute path')
     this.dataDir = dataDir
-    this.eventsPath = join(dataDir, 'feedback-v3.ndjson')
+    this.eventsPath = join(dataDir, 'feedback-v4.ndjson')
+    this.legacyEventsPath = join(dataDir, 'feedback-v3.ndjson')
     this.receiptsPath = join(dataDir, 'receipts-v3.ndjson')
     this.shareRequestsPath = join(dataDir, 'share-requests-v3.ndjson')
     this.receiptSeenPath = join(dataDir, 'receipt-seen-v3.ndjson')
@@ -69,7 +71,7 @@ export class FeedbackStore {
     appendJson(this.shareRequestsPath, { eventId } satisfies ShareRequest)
   }
 
-  /** Hide one unsubmitted local draft without ever accepting replacement text. */
+  /** Hide one unsubmitted local draft; replacement text is validated before this call. */
   discardDraft(eventId: string): boolean {
     if (!this.drafts().some(record => record.event.eventId === eventId)) return false
     appendJson(this.draftDiscardsPath, { eventId } satisfies DraftDiscard)
@@ -86,7 +88,10 @@ export class FeedbackStore {
   }
 
   records(): LocalFeedbackRecord[] {
-    return readLines<LocalFeedbackRecord>(this.eventsPath)
+    return [
+      ...readLines<LocalFeedbackRecord>(this.legacyEventsPath),
+      ...readLines<LocalFeedbackRecord>(this.eventsPath),
+    ]
   }
 
   receipts(): IngestReceipt[] {

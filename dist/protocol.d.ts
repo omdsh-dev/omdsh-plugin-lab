@@ -1,9 +1,13 @@
-/** Closed, task-agnostic summary protocol shared by the DSH plugin and ingest backend. */
-export declare const FEEDBACK_SCHEMA_VERSION: 3;
+/** Bounded, user-previewed summary protocol shared by the DSH plugin and ingest backend. */
+export declare const FEEDBACK_SCHEMA_VERSION: 4;
+export declare const MAX_FEEDBACK_SUMMARY_LENGTH: 320;
 export type HealthStatus = 'ok' | 'unavailable' | 'error' | 'unknown';
 export type ExperienceVerdict = 'good' | 'mixed' | 'bad';
 export declare const FEEDBACK_CATEGORIES: readonly ["installation", "startup", "invocation", "compatibility", "reliability", "performance", "result_quality", "general"];
 export type FeedbackCategory = typeof FEEDBACK_CATEGORIES[number];
+export type FeedbackSummarySource = 'template' | 'user_edited';
+/** Normalize and reject common pasted-secret, path, log and stack shapes before storage or upload. */
+export declare function normalizeFeedbackSummary(value: string): string;
 /** Silent panel response; unlike slash commands, this is never appended to the Session. */
 export interface PluginLabPanelProbe {
     readonly active: boolean;
@@ -18,13 +22,15 @@ export interface PluginLabPanelDraft {
     readonly eventId: string;
     readonly verdict: ExperienceVerdict;
     readonly category: FeedbackCategory;
+    readonly summary: string;
     readonly text: string;
 }
-/** Closed panel action result with no free-text input or Session event side effect. */
+/** Silent panel action result; it never appends the submitted summary to Session history. */
 export interface PluginLabPanelAction {
     readonly ok: boolean;
     readonly text: string;
     readonly eventId?: string;
+    readonly summary?: string;
 }
 export interface TrialPluginRef {
     /** Public DSH marketplace/package identifier; never a local path or user label. */
@@ -58,7 +64,7 @@ export interface FeedbackPreview {
  * install identifier, task/session identifier, metrics, notes, error or log data.
  */
 export interface FeedbackEventV3 {
-    readonly schemaVersion: typeof FEEDBACK_SCHEMA_VERSION;
+    readonly schemaVersion: 3;
     readonly type: 'feedback.signal';
     /** Random per-report id used only for idempotency. */
     readonly eventId: string;
@@ -71,8 +77,23 @@ export interface FeedbackEventV3 {
     /** Optional, report-scoped link used only when the user explicitly starts a retest. */
     readonly retestOfReceiptId?: string;
 }
+/** v4 adds one user-visible, bounded summary. It is never used for public aggregation. */
+export interface FeedbackEventV4 {
+    readonly schemaVersion: typeof FEEDBACK_SCHEMA_VERSION;
+    readonly type: 'feedback.signal';
+    readonly eventId: string;
+    readonly plugin: TrialPluginRef;
+    readonly health: HealthStatus;
+    readonly experience: ExperienceVerdict;
+    readonly category: FeedbackCategory;
+    readonly summary: string;
+    readonly summarySource: FeedbackSummarySource;
+    readonly source: 'user_confirmed';
+    readonly retestOfReceiptId?: string;
+}
+export type FeedbackEvent = FeedbackEventV3 | FeedbackEventV4;
 export interface LocalFeedbackRecord {
-    readonly event: FeedbackEventV3;
+    readonly event: FeedbackEvent;
     readonly requestedShare: boolean;
 }
 export type ReceiptStatus = 'received' | 'clustered' | 'reported' | 'fix-released' | 'retest-requested' | 'verified' | 'confirmed' | 'closed';
@@ -118,4 +139,4 @@ export interface ReceiptBoxSnapshot {
     readonly unreadCount: number;
 }
 /** The local record is already the exact network packet; no projection can add fields. */
-export declare function uploadPayload(record: LocalFeedbackRecord): FeedbackEventV3;
+export declare function uploadPayload(record: LocalFeedbackRecord): FeedbackEvent;

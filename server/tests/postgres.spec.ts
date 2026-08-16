@@ -8,18 +8,21 @@ import type { AcceptedEvent } from '../src/types.js'
 
 function accepted(eventId = crypto.randomUUID()): AcceptedEvent {
   return {
+    schemaVersion: 4,
     eventId,
     pluginModule: '@example/search',
     pluginVersion: '1.0.0',
     health: 'error',
     experience: 'bad',
     category: 'reliability',
+    summary: '插件启动失败，无法继续使用。',
+    summarySource: 'user_edited',
     source: 'user_confirmed',
   }
 }
 
-describe('PostgreSQL strict v3 repository', () => {
-  it('persists only finite v3 category summaries and an idempotent receipt lifecycle', async () => {
+describe('PostgreSQL bounded-summary repository', () => {
+  it('persists a private v4 summary and an idempotent receipt lifecycle', async () => {
     const database = newDb()
     for (const file of readdirSync(resolve('server/migrations')).filter(file => file.endsWith('.sql')).sort()) {
       database.public.none(readFileSync(resolve('server/migrations', file), 'utf8'))
@@ -55,6 +58,9 @@ describe('PostgreSQL strict v3 repository', () => {
     expect(columns).not.toEqual(expect.arrayContaining([
       'participant_id', 'occurred_at', 'task_id', 'note', 'crash_signatures', 'environment',
     ]))
+    expect(columns).toEqual(expect.arrayContaining(['summary', 'summary_source']))
+    const rows = database.public.many('SELECT summary, summary_source FROM feedback_events_v3')
+    expect(rows[0]).toEqual({ summary: '插件启动失败，无法继续使用。', summary_source: 'user_edited' })
     await pool.end()
   })
 })

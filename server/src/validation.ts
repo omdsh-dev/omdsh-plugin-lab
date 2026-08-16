@@ -11,6 +11,28 @@ const CATEGORY = new Set<FeedbackCategory>([
   'installation', 'startup', 'invocation', 'compatibility',
   'reliability', 'performance', 'result_quality', 'general',
 ])
+const SUMMARY_SOURCE = new Set(['template', 'user_edited'])
+const MAX_SUMMARY = 320
+const CATEGORY_TEXT: Record<FeedbackCategory, string> = {
+  installation: '安装', startup: '启动', invocation: '调用', compatibility: '兼容性',
+  reliability: '稳定性', performance: '性能', result_quality: '结果质量', general: '整体体验',
+}
+const HEALTH_TEXT: Record<HealthStatus, string> = {
+  ok: '运行正常', unavailable: '当前不可用', error: '运行错误', unknown: '状态未知',
+}
+const EXPERIENCE_TEXT: Record<ExperienceVerdict, string> = {
+  good: '好用', mixed: '一般', bad: '不好用',
+}
+const SUMMARY_GUARDS: readonly RegExp[] = [
+  /\r|\n|[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u,
+  /\b(?:https?:\/\/|www\.)/iu,
+  /[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/u,
+  /(?:^|[\s'"`])(?:\/(?:Users|home|private|tmp|var|etc)\/|[A-Za-z]:[\\/])/u,
+  /\b(?:sk|ghp|github_pat|AKIA|AIza)[-_A-Za-z0-9]{8,}\b/u,
+  /\b(?:token|secret|password|api[ _-]?key)\s*[:=]/iu,
+  /(?:\bat\s+\S+\s*\(|(?:Error|Exception):|\.[cm]?[jt]sx?:\d+(?::\d+)?|\.py:\d+)/u,
+  /^\[?\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/u,
+]
 
 function row(value: unknown, name: string): Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
@@ -29,14 +51,38 @@ function string(value: unknown, name: string): string {
   return value
 }
 
-/** Reject, rather than strip, every field outside the strict v3 alphabet. */
+function fixedSummary(
+  moduleName: string,
+  version: string | undefined,
+  health: HealthStatus,
+  experience: ExperienceVerdict,
+  category: FeedbackCategory,
+): string {
+  const coordinate = `${moduleName}${version === undefined ? '' : `#${version}`}`
+  return `${coordinate} 在“${CATEGORY_TEXT[category]}”方面：${HEALTH_TEXT[health]}，用户体验为“${EXPERIENCE_TEXT[experience]}”。`
+}
+
+function summary(value: unknown): string {
+  const normalized = string(value, 'summary').normalize('NFC').trim().replace(/[\t ]+/gu, ' ')
+  if (normalized.length === 0 || normalized.length > MAX_SUMMARY) throw new TypeError('summary is invalid')
+  if (SUMMARY_GUARDS.some(pattern => pattern.test(normalized))) throw new TypeError('summary is unsafe')
+  if (normalized !== value) throw new TypeError('summary must be normalized')
+  return normalized
+}
+
+/** Reject, rather than strip, every field outside the selected protocol alphabet. */
 export function acceptEvent(value: unknown): AcceptedEvent {
   const root = row(value, 'event')
-  exactKeys(root, [
+  const schemaVersion = root.schemaVersion
+  if (schemaVersion !== 3 && schemaVersion !== 4) throw new TypeError('unsupported event schema')
+  exactKeys(root, schemaVersion === 4 ? [
+    'schemaVersion', 'type', 'eventId', 'plugin', 'health', 'experience', 'category',
+    'summary', 'summarySource', 'source', 'retestOfReceiptId',
+  ] : [
     'schemaVersion', 'type', 'eventId', 'plugin', 'health', 'experience', 'category',
     'source', 'retestOfReceiptId',
   ], 'event')
-  if (root.schemaVersion !== 3 || root.type !== 'feedback.signal') {
+  if (root.type !== 'feedback.signal') {
     throw new TypeError('unsupported event schema')
   }
   const eventId = string(root.eventId, 'eventId')
@@ -53,6 +99,16 @@ export function acceptEvent(value: unknown): AcceptedEvent {
   if (!EXPERIENCE.has(root.experience as ExperienceVerdict)) throw new TypeError('experience is invalid')
   if (!CATEGORY.has(root.category as FeedbackCategory)) throw new TypeError('category is invalid')
   if (root.source !== 'user_confirmed') throw new TypeError('source is invalid')
+  const health = root.health as HealthStatus
+  const experience = root.experience as ExperienceVerdict
+  const category = root.category as FeedbackCategory
+  const template = fixedSummary(moduleName, version, health, experience, category)
+  const acceptedSummary = schemaVersion === 4 ? summary(root.summary) : template
+  const summarySource = schemaVersion === 4 ? string(root.summarySource, 'summarySource') : 'template'
+  if (!SUMMARY_SOURCE.has(summarySource)) throw new TypeError('summarySource is invalid')
+  if (summarySource === 'template' && acceptedSummary !== template) {
+    throw new TypeError('template summary does not match finite fields')
+  }
   const retestOfReceiptId = root.retestOfReceiptId === undefined
     ? undefined
     : string(root.retestOfReceiptId, 'retestOfReceiptId')
@@ -61,12 +117,15 @@ export function acceptEvent(value: unknown): AcceptedEvent {
   }
 
   return {
+    schemaVersion,
     eventId,
     pluginModule: moduleName,
     ...version === undefined ? {} : { pluginVersion: version },
-    health: root.health as HealthStatus,
-    experience: root.experience as ExperienceVerdict,
-    category: root.category as FeedbackCategory,
+    health,
+    experience,
+    category,
+    summary: acceptedSummary,
+    summarySource: summarySource as 'template' | 'user_edited',
     source: 'user_confirmed',
     ...retestOfReceiptId === undefined ? {} : { retestOfReceiptId },
   }

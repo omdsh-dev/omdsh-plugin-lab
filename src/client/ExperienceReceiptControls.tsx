@@ -1,15 +1,17 @@
 import { useState, type CSSProperties } from 'react'
 import {
-  FEEDBACK_CATEGORIES,
+  MAX_FEEDBACK_SUMMARY_LENGTH,
+  normalizeFeedbackSummary,
   type ExperienceVerdict,
   type FeedbackCategory,
 } from '../protocol.js'
-import { categoryText, fixedSummary, verdictText } from '../summary.js'
+import { categoryText, verdictText } from '../summary.js'
 import type { LabView } from './controller.js'
 
 export interface ExperienceReceiptControlsProps {
   readonly view: LabView
   readonly record: (verdict: ExperienceVerdict, category: FeedbackCategory) => Promise<void>
+  readonly revise: (summary: string) => Promise<void>
   readonly join: () => Promise<void>
   readonly cancel: () => Promise<void>
   readonly dismiss: () => void
@@ -62,18 +64,6 @@ const fieldLabel: CSSProperties = {
   letterSpacing: '.03em',
 }
 
-const choiceButton: CSSProperties = {
-  minWidth: 0,
-  height: 28,
-  padding: '0 8px',
-  border: '1px solid #dbe3ea',
-  borderRadius: 7,
-  background: '#ffffff',
-  color: '#475569',
-  cursor: 'pointer',
-  fontSize: 11,
-}
-
 function pluginLabel(view: LabView): string {
   const plugin = view.plugin
   if (plugin === undefined) return '本次插件'
@@ -81,11 +71,11 @@ function pluginLabel(view: LabView): string {
 }
 
 export function ExperienceReceiptControls({
-  view, record, join, cancel, dismiss, surface,
+  view, record, revise, join, cancel, dismiss, surface,
 }: ExperienceReceiptControlsProps) {
   const [editing, setEditing] = useState(false)
-  const [editVerdict, setEditVerdict] = useState<ExperienceVerdict>('mixed')
-  const [editCategory, setEditCategory] = useState<FeedbackCategory>('general')
+  const [editSummary, setEditSummary] = useState('')
+  const [editError, setEditError] = useState<string>()
   const pending = view.pending
   const category = view.suggestedCategory ?? 'general'
   const categoryName = categoryText(category)
@@ -124,16 +114,20 @@ export function ExperienceReceiptControls({
 
   const working = pending.phase === 'saving' || pending.phase === 'joining'
   const beginEditing = (): void => {
-    setEditVerdict(pending.verdict)
-    setEditCategory(pending.category)
+    setEditSummary(pending.summary ?? '')
+    setEditError(undefined)
     setEditing(true)
   }
   const applyEditing = (): void => {
-    void record(editVerdict, editCategory).then(() => { setEditing(false) })
+    try {
+      const normalized = normalizeFeedbackSummary(editSummary)
+      setEditSummary(normalized)
+      setEditError(undefined)
+      void revise(normalized).then(() => { setEditing(false) })
+    } catch (error: unknown) {
+      setEditError(error instanceof Error ? error.message : '摘要格式无效')
+    }
   }
-  const editedSummary = view.plugin === undefined
-    ? undefined
-    : fixedSummary(view.plugin, view.health ?? 'unknown', editVerdict, editCategory)
   return (
     <span
       role="region"
@@ -145,49 +139,35 @@ export function ExperienceReceiptControls({
       <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
         <strong>{pending.phase === 'joined' ? '回执已发送' : editing ? '修改回执' : '发送前预览'}</strong>
         <small style={{ color: '#64748b' }}>
-          {editing ? '有限字段' : `反馈大类：${categoryText(pending.category)}`}
+          {editing ? '用户编辑' : `反馈大类：${categoryText(pending.category)}`}
         </small>
       </span>
       {editing && pending.phase === 'local' ? (
         <>
-          <span style={{ display: 'grid', gap: 5 }}>
-            <small style={fieldLabel}>体验</small>
-            <span style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4 }}>
-              {(['good', 'mixed', 'bad'] as const).map(verdict => (
-                <button
-                  key={verdict}
-                  type="button"
-                  aria-pressed={editVerdict === verdict}
-                  style={editVerdict === verdict
-                    ? { ...choiceButton, borderColor: '#0f766e', background: '#ecfdf5', color: '#0f5f58', fontWeight: 700 }
-                    : choiceButton}
-                  onClick={() => { setEditVerdict(verdict) }}
-                >{verdict === 'good' ? '👍 ' : verdict === 'bad' ? '👎 ' : '— '}{verdictText(verdict)}</button>
-              ))}
-            </span>
-          </span>
           <label style={{ display: 'grid', gap: 5 }}>
-            <small style={fieldLabel}>问题大类</small>
-            <select
-              aria-label="问题大类"
-              value={editCategory}
-              onChange={event => { setEditCategory(event.currentTarget.value as FeedbackCategory) }}
+            <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+              <small style={fieldLabel}>脱敏 Summary</small>
+              <small style={{ color: editSummary.length > MAX_FEEDBACK_SUMMARY_LENGTH ? '#be123c' : '#94a3b8' }}>
+                {editSummary.length}/{MAX_FEEDBACK_SUMMARY_LENGTH}
+              </small>
+            </span>
+            <textarea
+              aria-label="编辑脱敏 Summary"
+              value={editSummary}
+              maxLength={MAX_FEEDBACK_SUMMARY_LENGTH}
+              rows={3}
+              autoFocus
+              onChange={event => { setEditSummary(event.currentTarget.value); setEditError(undefined) }}
               style={{
-                width: '100%', height: 30, padding: '0 8px', border: '1px solid #dbe3ea', borderRadius: 7,
-                background: '#fff', color: '#334155', fontSize: 11.5, outlineColor: '#0f766e',
+                width: '100%', minHeight: 68, resize: 'vertical', boxSizing: 'border-box', padding: '8px 9px',
+                border: `1px solid ${editError === undefined ? '#cbd5e1' : '#e11d48'}`, borderRadius: 8,
+                background: '#fff', color: '#1e293b', font: 'inherit', lineHeight: 1.5, outlineColor: '#0f766e',
               }}
-            >
-              {FEEDBACK_CATEGORIES.map(value => (
-                <option key={value} value={value}>{categoryText(value)}</option>
-              ))}
-            </select>
+            />
           </label>
-          <span style={{ display: 'grid', gap: 3, padding: '7px 8px', borderLeft: '2px solid #0f766e', background: '#f8fafc', color: '#334155' }}>
-            <small style={fieldLabel}>更新后 Summary</small>
-            <span>{editedSummary ?? '反馈对象状态暂不可用。'}</span>
-          </span>
+          {editError !== undefined && <small role="alert" style={{ color: '#be123c' }}>{editError}</small>}
           <small style={{ color: '#64748b' }}>
-            插件与运行状态来自 Host，不可手工改写；对象不对时请取消后重选。
+            聚合标签：{verdictText(pending.verdict)} · {categoryText(pending.category)}。请勿粘贴日志、路径、密钥或任务内容。
           </small>
           <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
             <button type="button" style={confirmButton} onClick={applyEditing}>应用修改</button>
@@ -201,11 +181,13 @@ export function ExperienceReceiptControls({
               ? '正在本地生成固定模板 Summary…'
               : pending.phase === 'joining'
                 ? '正在发送你看到的有限字段…'
-                : pending.text}
+                : pending.phase === 'local'
+                  ? `脱敏 Summary：${pending.summary ?? pending.text ?? ''}`
+                  : pending.text}
           </span>
           {(pending.phase === 'saving' || pending.phase === 'local') && (
             <small style={{ color: '#64748b' }}>
-              未读取或附带任务、对话正文、Prompt、回复、日志、文件或报错详情。
+              仅发送这句摘要和只读标签；不自动附带任务、对话、日志、文件或报错详情。
             </small>
           )}
           <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>

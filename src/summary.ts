@@ -1,5 +1,5 @@
 import type {
-  ExperienceVerdict, FeedbackCategory, FeedbackEventV3, HealthStatus, TrialPluginRef,
+  ExperienceVerdict, FeedbackCategory, FeedbackEvent, HealthStatus, TrialPluginRef,
 } from './protocol.js'
 
 const CATEGORY_TEXT: Record<FeedbackCategory, string> = {
@@ -51,11 +51,17 @@ export function fixedSummary(
   return `${coordinate} 在“${CATEGORY_TEXT[category]}”方面：${HEALTH_TEXT[health]}，用户体验为“${VERDICT_TEXT[experience]}”。`
 }
 
-/** Every readable preview line is derived from the exact closed upload packet. */
-export function renderUploadPreview(event: FeedbackEventV3): string[] {
+export function eventSummary(event: FeedbackEvent): string {
+  return event.schemaVersion === 4
+    ? event.summary
+    : fixedSummary(event.plugin, event.health, event.experience, event.category)
+}
+
+/** The readable preview contains the exact bounded summary that will be uploaded. */
+export function renderUploadPreview(event: FeedbackEvent): string[] {
   return [
-    `脱敏 Summary：${fixedSummary(event.plugin, event.health, event.experience, event.category)}`,
-    '发送时只会上传生成这句 Summary 所需的有限枚举；不会附带本地任务、对话、Prompt、回复、日志或文件。',
+    `脱敏 Summary：${eventSummary(event)}`,
+    '这句 Summary 会随有限枚举一起发送；不会自动附带本地任务、对话、Prompt、回复、日志或文件。',
     '点击“确认发送这份回执”前不会产生网络请求。',
   ]
 }

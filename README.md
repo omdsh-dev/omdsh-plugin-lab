@@ -1,6 +1,6 @@
 # Oh My DSH Plugin Lab
 
-Plugin Lab 0.6 是面向 DeepSeek Harness rc.6 的隐私优先“体验回执”。默认只有一个轻量入口 `体验回执`：点开同一张票据即可选择插件、让用户或 Agent 准备反馈、确认发送，并持续查看处理进度。它不是插件格子，也不会自动弹窗或常驻展开。
+Plugin Lab 0.6 是面向 DeepSeek Harness rc.6 的隐私优先“体验回执”。默认只有一个轻量入口 `体验回执`：点开同一张票据即可选择插件、让用户或 Agent 准备反馈、编辑一段短摘要、确认发送，并持续查看处理进度。它不是插件格子，也不会自动弹窗或常驻展开。
 
 插件确实参与一次 Agent 回复时，该回复下方还会出现就地 `👍 👎`，但它只是快捷方式，不是第二个常驻入口。Agent 只接收一个安全胶囊：公开插件名、版本和 Host 状态枚举。客户端为摆放按钮只读取最新回复的消息 ID 与时间，不读取回复正文；任何反馈工具都不接收任务、文件或日志。
 
@@ -9,8 +9,8 @@ Plugin Lab 0.6 是面向 DeepSeek Harness rc.6 的隐私优先“体验回执”
 1. 默认只显示一个 `体验回执` 小按钮；未读进展显示数字角标，明确故障或手动选中插件时显示“待反馈”。
 2. 点开后可从已安装插件中选择目标。这里仅调用 rc.6 Host 插件清单，读取公开 `moduleName`、启用状态和 Fiber 生命周期枚举，不读取插件配置或内容。
 3. 用户可直接点 `👍 👎`，也可明确告诉 Agent“这个插件好用/不好用”。Agent 只能把这一个有限评价交给本地准备工具；用户未表达评价时必须询问，不能根据对话或结果自行猜测。
-4. Agent 按 Host 状态固定归类，并在同一张票据中生成发送前预览。Summary 只由公开插件坐标和有限枚举拼成；此时只保存到本机，没有网络请求。
-5. 点“修改”后可在原位调整 `好用 / 一般 / 不好用` 和问题大类，Summary 会实时重算；点击“应用修改”才替换本地草稿。插件对象与 Host 状态保持只读，选错对象可“取消并重选”。只有点击“确认发送”，所见有限字段才会发送；确认后 Session 历史新增一条独立“体验回执”卡片。
+4. Agent 按 Host 状态固定归类，并在同一张票据中生成默认 Summary；此时只保存到本机，没有网络请求。
+5. 点“修改”后直接编辑这句短 Summary，不做实时重算。点击“应用修改”才替换本地草稿；常见日志、路径、密钥、URL、邮箱和堆栈形态会被拒绝。插件对象、Host 状态和聚合标签保持只读，选错对象可“取消并重选”。只有点击“确认发送”，所见 Summary 和有限字段才会发送。
 6. 同一入口长期保留本地草稿、等待发送、聚合、公开跟进、修复和复测状态。默认只显示最近 3 条紧凑进度；单条 Summary 和完整历史都由用户按需展开。后端达到聚合阈值后才创建 GitHub Issue。
 
 普通 Agent/模型调用错误、网络错误或“缺少 API Key”不会被自动归因给插件，因为它们不能证明插件本身故障。`体验回执` 入口仍保持可用，但不会据此自动生成差评。
@@ -24,10 +24,11 @@ flowchart LR
   C --> D{"如何表达体验？"}
   D -->|"用户点击"| E["👍 / 👎"]
   D -->|"用户明确告诉 Agent"| F["Agent 准备有限评价"]
-  E --> G["本机固定模板预览"]
+  E --> G["本机 Summary 预览"]
   F --> G
-  G -->|"修改或取消"| G
-  G -->|"用户确认发送"| H["有限枚举包"]
+  G -->|"取消"| B
+  G -->|"用户手动编辑"| G
+  G -->|"用户确认发送"| H["有限字段 + 所见 Summary"]
   H --> I["后端聚合"]
   I -->|"达到阈值"| J["GitHub 聚合 Issue"]
   J --> K["同一入口查看修复与复测进度"]
@@ -40,13 +41,13 @@ Agent 可能已经拥有当前任务的正常会话上下文，但 Plugin Lab �
 ```sh
 pnpm install
 pnpm pack:release
-dsh plugin --profile web add ./oh-my-dsh-plugin-lab-0.6.2.tgz
+dsh plugin --profile web add ./oh-my-dsh-plugin-lab-0.6.3.tgz
 dsh --profile web
 ```
 
 Plugin Lab 是标准 DSH Bundle：`package.json` 通过 `dsh.bundle.patch` 声明 Host 插件，通过 `dsh.client` 注册一个输入区回执入口和回复下方的上下文快捷操作。插件选择、探活、脱敏预览、确认提交与进度查看都在这一入口中完成。
 
-版本 `0.6.2` 的 Peer 契约从 DSH `0.1.0-rc.6` 起。完整测试会执行真实的 rc.6 打包、安装、Host/Web 启动、Client Loader 注册和卸载。
+版本 `0.6.3` 的 Peer 契约从 DSH `0.1.0-rc.6` 起。完整测试会执行真实的 rc.6 打包、安装、Host/Web 启动、Client Loader 注册和卸载。
 
 ## 兼容命令与 Agent 工具
 
@@ -79,7 +80,7 @@ reliability | performance | result_quality | general
 
 ```json
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "type": "feedback.signal",
   "eventId": "随机单次 UUID",
   "plugin": {
@@ -89,13 +90,15 @@ reliability | performance | result_quality | general
   "health": "error",
   "experience": "bad",
   "category": "reliability",
+  "summary": "插件启动偏慢，但交互仍然清楚。",
+  "summarySource": "user_edited",
   "source": "user_confirmed"
 }
 ```
 
-复测时可以额外出现一个随机、单报告范围的 `retestOfReceiptId`。客户端和服务端拒绝任何其他字段。协议没有 `summary` 自由文本字段；界面和 GitHub 中看到的中文摘要都由上述枚举通过固定模板生成。
+`summary` 是用户发送前看到的同一句文字，长度为 1–320 字符；`summarySource` 只能是 `template` 或 `user_edited`。复测时可以额外出现一个随机、单报告范围的 `retestOfReceiptId`。客户端和服务端拒绝任何其他字段。后端继续接受旧 v3 固定模板包。
 
-不会创建、读取或发送：
+插件不会自动创建、读取或附加：
 
 - 当前任务、任务标签、Prompt、Assistant 回复正文或 Agent memory；
 - stdout、stderr、访问日志、应用日志或 Tool 参数/结果；
@@ -103,20 +106,23 @@ reliability | performance | result_quality | general
 - 文件、代码、路径、URL、环境变量、配置；
 - 用户、账号、设备、安装、Session 等稳定标识；
 - 客户端时间、locale、OS、架构、计数或时延；
-- 备注、理由、模型自由摘要或其他自由文本。
+- Agent 或模型生成的自由备注；Agent 工具没有编辑 Summary 的参数。
 
-本地 v3 文件只有：
+本地文件只有：
 
 ```text
 $DSH_HOME/omdsh-plugin-lab/
-  feedback-v3.ndjson
+  feedback-v4.ndjson
+  feedback-v3.ndjson        # 只读兼容旧草稿与历史
   share-requests-v3.ndjson
   receipts-v3.ndjson
   receipt-seen-v3.ndjson
   draft-discards-v3.ndjson
 ```
 
-目录权限为 `0700`，文件权限为 `0600`。v3 不读取或补传旧版 `.install-id`、`events.ndjson`、`crashes.ndjson` 或 v2 队列；历史文件不会被自动删除。
+目录权限为 `0700`，文件权限为 `0600`。v4 会显示并允许处理旧 v3 回执，但不读取或补传旧版 `.install-id`、`events.ndjson`、`crashes.ndjson` 或 v2 队列；历史文件不会被自动删除。
+
+摘要过滤是防误粘贴护栏，不是完整的数据防泄漏系统。它能拒绝常见敏感形态，但无法理解所有自然语言中的隐私；最终发送内容始终需要用户自己检查并确认。
 
 网络传输仍会让服务器或中间层观察 IP、请求时间等元数据，因此项目不宣称绝对匿名。生产部署必须关闭代理、网关、WAF、应用和数据库的请求体日志，并不得把 IP/User-Agent 写入业务数据。
 
@@ -142,13 +148,14 @@ Bundle 默认关闭网络发送：
 
 `server/` 提供 Node.js + PostgreSQL 接收器：
 
-- 只接受 schema v3，未知字段 fail closed；
-- 请求体上限 1 KiB，错误响应不回显输入或异常；
+- 接受旧 schema v3 和受限 Summary 的 schema v4，未知字段 fail closed；
+- 请求体上限 2 KiB，错误响应不回显输入或异常；
 - 不存 IP、User-Agent、原始请求体或客户端时间；
 - 不使用稳定用户 ID，统计口径是“报告数”而非“独立用户数”；
 - 按公开插件、版本、health、experience 和 category 聚合；
 - 默认同类报告达到 5 条后才创建 GitHub 聚合 Issue；
-- GitHub 只接收固定模板和聚合计数，不接收单条反馈、回执 ID或任务信息；
+- 单条 Summary 只在反馈后端私下保存，不参与聚类键；
+- GitHub 只接收固定聚合模板和计数，不接收单条 Summary、回执 ID 或任务信息；
 - Follow Token 只关联一条报告，用于返回修复与复测状态。
 
 生产环境需要：
@@ -174,4 +181,4 @@ GITHUB_REPORT_THRESHOLD=5
 pnpm test:all
 ```
 
-验证覆盖闭合 Schema、Agent 探活/准备工具、任务内容 canary、单入口选择、修改/取消、两阶段确认、回执进度、Client 真实点击、服务端未知字段拒绝、PostgreSQL v3 列审计、GitHub 固定模板、聚合阈值、回执/复测，以及真实 DSH rc.6 安装与启动生命周期。
+验证覆盖 v3/v4 Schema、Agent 探活/准备工具、敏感文本护栏、单入口编辑/取消、两阶段确认、回执进度、Client 真实点击、服务端未知字段拒绝、PostgreSQL 私有 Summary、GitHub 聚合隔离、聚合阈值、回执/复测，以及真实 DSH rc.6 安装与启动生命周期。
