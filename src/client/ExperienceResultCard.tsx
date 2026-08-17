@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import type { InjectFace, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import type { ExperienceVerdict, FeedbackCategory } from '../protocol.js'
+import type { ExperienceVerdict, FeedbackCategory, PluginLabRevision } from '../protocol.js'
 import type { LabController } from './controller.js'
 import { ExperienceReceiptControls } from './ExperienceReceiptControls.js'
 import { latestAssistantAnchor } from './message-anchor.js'
@@ -8,7 +8,7 @@ import { latestAssistantAnchor } from './message-anchor.js'
 export interface LabInjected {
   hooks: { pluginLab: LabController }
   record: (verdict: ExperienceVerdict, category: FeedbackCategory) => Promise<void>
-  revise: (summary: string) => Promise<void>
+  revise: (revision: PluginLabRevision) => Promise<void>
   join: () => Promise<void>
   cancel: () => Promise<void>
   refresh: () => Promise<string>

@@ -24,6 +24,7 @@ import {
   type LocalFeedbackRecord,
   type PluginLabPanelAction,
   type PluginLabPanelProbe,
+  type PluginLabRevision,
   type ReceiptBoxSnapshot,
   type ReceiptProgressItem,
   type SafeExperienceAssessment,
@@ -240,7 +241,7 @@ export function apply(ctx: Context, rawConfig: Config): void {
     return { ok: true, text: renderUploadPreview(event).join('\n'), eventId: event.eventId, summary }
   }
 
-  const reviseFeedback = (agent: Agent, input: string): PluginLabPanelAction => {
+  const reviseFeedback = (agent: Agent, revision: PluginLabRevision): PluginLabPanelAction => {
     const key = agentKey(agent)
     const previousId = draftsBySession.get(key)
     if (previousId === undefined) return { ok: false, text: '找不到可修改的本地草稿。' }
@@ -248,7 +249,7 @@ export function apply(ctx: Context, rawConfig: Config): void {
     if (previous === undefined) return { ok: false, text: '找不到可修改的本地草稿。' }
     let summary: string
     try {
-      summary = normalizeFeedbackSummary(input)
+      summary = normalizeFeedbackSummary(revision.summary)
     } catch (error: unknown) {
       return { ok: false, text: error instanceof Error ? error.message : '摘要格式无效' }
     }
@@ -259,10 +260,10 @@ export function apply(ctx: Context, rawConfig: Config): void {
       eventId: crypto.randomUUID(),
       plugin: source.plugin,
       health: source.health,
-      experience: source.experience,
-      category: source.category,
+      experience: revision.verdict,
+      category: revision.category,
       summary,
-      summarySource: summary === fixedSummary(source.plugin, source.health, source.experience, source.category)
+      summarySource: summary === fixedSummary(source.plugin, source.health, revision.verdict, revision.category)
         ? 'template'
         : 'user_edited',
       source: 'user_confirmed',

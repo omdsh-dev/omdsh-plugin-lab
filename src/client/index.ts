@@ -65,7 +65,7 @@ export function apply(ctx: ClientContext): void {
       return {
         hooks: { pluginLab: controller },
         record: (outcome, category) => controller.record(outcome, category),
-        revise: summary => controller.revise(summary),
+        revise: revision => controller.revise(revision),
         join: () => controller.join(),
         cancel: async () => { await controller.cancel() },
         dismiss: () => controller.dismiss(),
@@ -86,7 +86,7 @@ export function apply(ctx: ClientContext): void {
       return {
         hooks: { pluginLab: controller },
         record: (outcome, category) => controller.record(outcome, category),
-        revise: summary => controller.revise(summary),
+        revise: revision => controller.revise(revision),
         join: () => controller.join(),
         cancel: async () => { await controller.cancel() },
         refresh: () => controller.probe(),

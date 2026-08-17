@@ -19,6 +19,11 @@ const health = z.union([
   z.literal('unknown'),
 ])
 const summary = z.string().min(1).max(320)
+const revision = z.object({
+  verdict,
+  category,
+  summary,
+})
 const pluginRef = z.object({
   moduleName: z.string(),
   version: z.string().optional(),
@@ -124,8 +129,8 @@ export const PLUGIN_LAB_REMOTE_DESCRIPTORS = [
         codec: { mode: 'strict' as const, typeSymbol: '@deepseek-ai/dsh-session/types#SessionId', schema: agentId },
       },
       {
-        name: 'summary', wire: 'summary', source: 'json' as const,
-        codec: { mode: 'strict' as const, typeSymbol: 'string', schema: summary },
+        name: 'revision', wire: 'revision', source: 'json' as const,
+        codec: { mode: 'strict' as const, typeSymbol: '@oh-my-dsh/plugin-lab#PluginLabRevision', schema: revision },
       },
     ],
     result: { mode: 'strict' as const, typeSymbol: '@oh-my-dsh/plugin-lab#PluginLabPanelAction', schema: actionResult },

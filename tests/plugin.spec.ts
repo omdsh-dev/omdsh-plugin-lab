@@ -41,14 +41,20 @@ describe('DSH strict feedback integration', () => {
       unreadCount: 0,
     })
 
-    expect(panel.revise(agent, '/Users/alice/private.log')).toMatchObject({
+    expect(panel.revise(agent, {
+      verdict: 'bad', category: 'reliability', summary: '/Users/alice/private.log',
+    })).toMatchObject({
       ok: false, text: '摘要不能包含本地路径',
     })
-    const revised = panel.revise(agent, '插件启动后体验顺畅。')
+    const revised = panel.revise(agent, {
+      verdict: 'good', category: 'performance', summary: '插件启动后体验顺畅。',
+    })
     expect(revised.eventId).not.toBe(first.eventId)
     const revisedBox = await panel.receipts(agent, false)
     expect(revisedBox.items).toHaveLength(1)
     expect(revisedBox.items[0]?.summary).toBe('插件启动后体验顺畅。')
+    const revisedEvent = JSON.parse(readFileSync(join(dataDir, 'feedback-v4.ndjson'), 'utf8').trim().split('\n').at(-1) ?? '{}')
+    expect(revisedEvent.event).toMatchObject({ experience: 'good', category: 'performance' })
     expect(panel.cancel(agent)).toMatchObject({ ok: true })
     await expect(panel.receipts(agent, false)).resolves.toEqual({ items: [], unreadCount: 0 })
     expect(panel.probe(agent)).toMatchObject({ active: false, health: 'unknown' })

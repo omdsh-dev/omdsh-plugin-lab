@@ -4153,6 +4153,11 @@ const health = union([
 	literal("unknown")
 ]);
 const summary = string().min(1).max(320);
+const revision = object({
+	verdict,
+	category,
+	summary
+});
 const pluginRef = object({
 	moduleName: string(),
 	version: string().optional()
@@ -4356,13 +4361,13 @@ const PLUGIN_LAB_REMOTE_DESCRIPTORS = [
 				schema: agentId
 			}
 		}, {
-			name: "summary",
-			wire: "summary",
+			name: "revision",
+			wire: "revision",
 			source: "json",
 			codec: {
 				mode: "strict",
-				typeSymbol: "string",
-				schema: summary
+				typeSymbol: "@oh-my-dsh/plugin-lab#PluginLabRevision",
+				schema: revision
 			}
 		}],
 		result: {
@@ -4656,7 +4661,7 @@ var LabController = class {
 			}
 		});
 	}
-	async revise(summary$1) {
+	async revise(revision$1) {
 		const pending = this.view.pending;
 		if (pending === void 0 || pending.phase !== "local") return;
 		this.publish({
@@ -4666,13 +4671,15 @@ var LabController = class {
 				phase: "saving"
 			}
 		});
-		const settled = await this.call(() => this.remote.revise(this.sessionId, summary$1));
+		const settled = await this.call(() => this.remote.revise(this.sessionId, revision$1));
 		if (settled.ok && settled.value.ok) {
 			this.publish({
 				...this.view,
 				pending: {
 					...pending,
-					summary: settled.value.summary ?? summary$1,
+					verdict: revision$1.verdict,
+					category: revision$1.category,
+					summary: settled.value.summary ?? revision$1.summary,
 					phase: "local",
 					text: settled.value.text
 				}
@@ -4810,6 +4817,16 @@ var LabController = class {
 //#endregion
 //#region src/protocol.ts
 const MAX_FEEDBACK_SUMMARY_LENGTH = 320;
+const FEEDBACK_CATEGORIES = [
+	"installation",
+	"startup",
+	"invocation",
+	"compatibility",
+	"reliability",
+	"performance",
+	"result_quality",
+	"general"
+];
 const SUMMARY_GUARDS = [
 	[/\r|\n|[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u, "摘要只能是一段文字"],
 	[/\b(?:https?:\/\/|www\.)/iu, "摘要不能包含链接"],
@@ -4874,6 +4891,20 @@ const fieldLabel = {
 	fontWeight: 650,
 	letterSpacing: ".03em"
 };
+const choiceButton = {
+	...quietButton,
+	minWidth: 0,
+	height: 28,
+	padding: "0 7px",
+	background: "#fff",
+	fontSize: 11
+};
+const editToggle = {
+	...quietButton,
+	height: 24,
+	padding: "0 8px",
+	fontSize: 10.5
+};
 function pluginLabel(view) {
 	const plugin = view.plugin;
 	if (plugin === void 0) return "本次插件";
@@ -4881,6 +4912,8 @@ function pluginLabel(view) {
 }
 function ExperienceReceiptControls({ view, record, revise, join, cancel, dismiss, surface }) {
 	const [editing, setEditing] = (0, react.useState)(false);
+	const [editVerdict, setEditVerdict] = (0, react.useState)("mixed");
+	const [editCategory, setEditCategory] = (0, react.useState)("general");
 	const [editSummary, setEditSummary] = (0, react.useState)("");
 	const [editError, setEditError] = (0, react.useState)();
 	const pending = view.pending;
@@ -4932,6 +4965,8 @@ function ExperienceReceiptControls({ view, record, revise, join, cancel, dismiss
 	});
 	const working = pending.phase === "saving" || pending.phase === "joining";
 	const beginEditing = () => {
+		setEditVerdict(pending.verdict);
+		setEditCategory(pending.category);
 		setEditSummary(pending.summary ?? "");
 		setEditError(void 0);
 		setEditing(true);
@@ -4941,12 +4976,21 @@ function ExperienceReceiptControls({ view, record, revise, join, cancel, dismiss
 			const normalized = normalizeFeedbackSummary(editSummary);
 			setEditSummary(normalized);
 			setEditError(void 0);
-			revise(normalized).then(() => {
+			revise({
+				verdict: editVerdict,
+				category: editCategory,
+				summary: normalized
+			}).then(() => {
 				setEditing(false);
 			});
 		} catch (error) {
 			setEditError(error instanceof Error ? error.message : "摘要格式无效");
 		}
+	};
+	const restoreDefaultSummary = () => {
+		if (view.plugin === void 0) return;
+		setEditSummary(fixedSummary(view.plugin, view.health ?? "unknown", editVerdict, editCategory));
+		setEditError(void 0);
 	};
 	return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
 		role: "region",
@@ -4964,12 +5008,106 @@ function ExperienceReceiptControls({ view, record, revise, join, cancel, dismiss
 				justifyContent: "space-between",
 				gap: 8
 			},
-			children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("strong", { children: pending.phase === "joined" ? "回执已发送" : editing ? "修改回执" : "发送前预览" }), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("small", {
+			children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("strong", { children: pending.phase === "joined" ? "回执已发送" : editing ? "修改回执" : "发送前预览" }), editing ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+				type: "button",
+				"aria-pressed": true,
+				title: "关闭后放弃尚未应用的修改",
+				onClick: () => {
+					setEditing(false);
+					setEditError(void 0);
+				},
+				style: {
+					...editToggle,
+					border: "1px solid #0f766e",
+					background: "#e7f5f1",
+					color: "#0f5f59",
+					fontWeight: 700
+				},
+				children: "内容可修改"
+			}) : /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("small", {
 				style: { color: "#64748b" },
-				children: editing ? "用户编辑" : `反馈大类：${categoryText(pending.category)}`
+				children: [
+					verdictText(pending.verdict),
+					" · ",
+					categoryText(pending.category)
+				]
 			})]
 		}), editing && pending.phase === "local" ? /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [
-			/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("label", {
+			/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+				style: {
+					display: "grid",
+					gridTemplateColumns: "1fr 1fr",
+					gap: 7
+				},
+				children: [/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+					style: {
+						display: "grid",
+						gap: 5
+					},
+					children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("small", {
+						style: fieldLabel,
+						children: "体验"
+					}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+						role: "group",
+						"aria-label": "编辑体验",
+						style: {
+							display: "grid",
+							gridTemplateColumns: "repeat(3, 1fr)",
+							gap: 3
+						},
+						children: [
+							"good",
+							"mixed",
+							"bad"
+						].map((verdict$1) => /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+							type: "button",
+							"aria-pressed": editVerdict === verdict$1,
+							style: editVerdict === verdict$1 ? {
+								...choiceButton,
+								border: "1px solid #0f766e",
+								background: "#e7f5f1",
+								color: "#0f5f59",
+								fontWeight: 700
+							} : choiceButton,
+							onClick: () => {
+								setEditVerdict(verdict$1);
+							},
+							children: verdictText(verdict$1)
+						}, verdict$1))
+					})]
+				}), /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("label", {
+					style: {
+						display: "grid",
+						gap: 5
+					},
+					children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("small", {
+						style: fieldLabel,
+						children: "反馈分类"
+					}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("select", {
+						"aria-label": "编辑反馈分类",
+						value: editCategory,
+						onChange: (event) => {
+							setEditCategory(event.currentTarget.value);
+						},
+						style: {
+							height: 28,
+							boxSizing: "border-box",
+							padding: "0 7px",
+							border: "1px solid #cbd5e1",
+							borderRadius: 8,
+							background: "#fff",
+							color: "#334155",
+							font: "inherit",
+							outlineColor: "#0f766e"
+						},
+						children: FEEDBACK_CATEGORIES.map((value) => /* @__PURE__ */ (0, react_jsx_runtime.jsx)("option", {
+							value,
+							children: categoryText(value)
+						}, value))
+					})]
+				})]
+			}),
+			/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
 				style: {
 					display: "grid",
 					gap: 5
@@ -4984,13 +5122,33 @@ function ExperienceReceiptControls({ view, record, revise, join, cancel, dismiss
 					children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("small", {
 						style: fieldLabel,
 						children: "脱敏 Summary"
-					}), /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("small", {
-						style: { color: editSummary.length > MAX_FEEDBACK_SUMMARY_LENGTH ? "#be123c" : "#94a3b8" },
-						children: [
-							editSummary.length,
-							"/",
-							MAX_FEEDBACK_SUMMARY_LENGTH
-						]
+					}), /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+						style: {
+							display: "inline-flex",
+							alignItems: "baseline",
+							gap: 7
+						},
+						children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+							type: "button",
+							onClick: restoreDefaultSummary,
+							style: {
+								border: 0,
+								padding: 0,
+								background: "transparent",
+								color: "#0f766e",
+								cursor: "pointer",
+								font: "inherit",
+								fontSize: 10.5
+							},
+							children: "恢复默认文案"
+						}), /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("small", {
+							style: { color: editSummary.length > MAX_FEEDBACK_SUMMARY_LENGTH ? "#be123c" : "#94a3b8" },
+							children: [
+								editSummary.length,
+								"/",
+								MAX_FEEDBACK_SUMMARY_LENGTH
+							]
+						})]
 					})]
 				}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("textarea", {
 					"aria-label": "编辑脱敏 Summary",
@@ -5023,15 +5181,9 @@ function ExperienceReceiptControls({ view, record, revise, join, cancel, dismiss
 				style: { color: "#be123c" },
 				children: editError
 			}),
-			/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("small", {
+			/* @__PURE__ */ (0, react_jsx_runtime.jsx)("small", {
 				style: { color: "#64748b" },
-				children: [
-					"聚合标签：",
-					verdictText(pending.verdict),
-					" · ",
-					categoryText(pending.category),
-					"。请勿粘贴日志、路径、密钥或任务内容。"
-				]
+				children: "标签与 Summary 分别修改，不会实时重算。请勿粘贴日志、路径、密钥或任务内容。"
 			}),
 			/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
 				style: {
@@ -5049,8 +5201,9 @@ function ExperienceReceiptControls({ view, record, revise, join, cancel, dismiss
 					style: quietButton,
 					onClick: () => {
 						setEditing(false);
+						setEditError(void 0);
 					},
-					children: "放弃修改"
+					children: "关闭编辑"
 				})]
 			})
 		] }) : /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [
@@ -5083,9 +5236,10 @@ function ExperienceReceiptControls({ view, record, revise, join, cancel, dismiss
 					}),
 					pending.phase === "local" && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
 						type: "button",
-						style: quietButton,
+						"aria-pressed": false,
+						style: editToggle,
 						onClick: beginEditing,
-						children: "修改"
+						children: "内容可修改"
 					}),
 					pending.phase === "local" && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
 						type: "button",
@@ -5867,7 +6021,7 @@ function apply(ctx) {
 			return {
 				hooks: { pluginLab: controller },
 				record: (outcome, category$1) => controller.record(outcome, category$1),
-				revise: (summary$1) => controller.revise(summary$1),
+				revise: (revision$1) => controller.revise(revision$1),
 				join: () => controller.join(),
 				cancel: async () => {
 					await controller.cancel();
@@ -5889,7 +6043,7 @@ function apply(ctx) {
 			return {
 				hooks: { pluginLab: controller },
 				record: (outcome, category$1) => controller.record(outcome, category$1),
-				revise: (summary$1) => controller.revise(summary$1),
+				revise: (revision$1) => controller.revise(revision$1),
 				join: () => controller.join(),
 				cancel: async () => {
 					await controller.cancel();

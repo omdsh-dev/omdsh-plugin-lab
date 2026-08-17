@@ -85,9 +85,9 @@ async function bench() {
       calls.push({ method: 'record', sessionId })
       return { ok: true as const, value: { ok: true, text: '待确认' } }
     },
-    revise: async (sessionId, summary) => {
+    revise: async (sessionId, revision) => {
       calls.push({ method: 'revise', sessionId })
-      return { ok: true as const, value: { ok: true, text: '已修改', summary } }
+      return { ok: true as const, value: { ok: true, text: '已修改', summary: revision.summary } }
     },
     join: async sessionId => {
       calls.push({ method: 'join', sessionId })
