@@ -25,6 +25,12 @@ export interface PluginLabPanelDraft {
     readonly summary: string;
     readonly text: string;
 }
+/** User-editable feedback content. Plugin identity and Host health stay factual and read-only. */
+export interface PluginLabRevision {
+    readonly verdict: ExperienceVerdict;
+    readonly category: FeedbackCategory;
+    readonly summary: string;
+}
 /** Silent panel action result; it never appends the submitted summary to Session history. */
 export interface PluginLabPanelAction {
     readonly ok: boolean;

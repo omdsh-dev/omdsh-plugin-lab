@@ -177,13 +177,17 @@ export declare const PLUGIN_LAB_REMOTE_DESCRIPTORS: readonly [{
             readonly schema: z.ZodIntersection<z.ZodString, z.ZodUnknown>;
         };
     }, {
-        readonly name: "summary";
-        readonly wire: "summary";
+        readonly name: "revision";
+        readonly wire: "revision";
         readonly source: "json";
         readonly codec: {
             readonly mode: "strict";
-            readonly typeSymbol: "string";
-            readonly schema: z.ZodString;
+            readonly typeSymbol: "@oh-my-dsh/plugin-lab#PluginLabRevision";
+            readonly schema: z.ZodObject<{
+                verdict: z.ZodUnion<readonly [z.ZodLiteral<"good">, z.ZodLiteral<"mixed">, z.ZodLiteral<"bad">]>;
+                category: z.ZodUnion<readonly [z.ZodLiteral<"installation">, z.ZodLiteral<"startup">, z.ZodLiteral<"invocation">, z.ZodLiteral<"compatibility">, z.ZodLiteral<"reliability">, z.ZodLiteral<"performance">, z.ZodLiteral<"result_quality">, z.ZodLiteral<"general">]>;
+                summary: z.ZodString;
+            }, z.core.$strip>;
         };
     }];
     readonly result: {

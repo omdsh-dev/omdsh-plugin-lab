@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import type { InjectFace, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {
-  ExperienceVerdict, FeedbackCategory, ReceiptBoxSnapshot, ReceiptProgressItem, TrialPluginRef,
+  ExperienceVerdict, FeedbackCategory, PluginLabRevision, ReceiptBoxSnapshot, ReceiptProgressItem, TrialPluginRef,
 } from '../protocol.js'
 import type { LabController } from './controller.js'
 import { ExperienceReceiptControls } from './ExperienceReceiptControls.js'
@@ -16,7 +16,7 @@ export interface PluginChoice {
 export interface PluginLabInjected {
   hooks: { pluginLab: LabController }
   record: (verdict: ExperienceVerdict, category: FeedbackCategory) => Promise<void>
-  revise: (summary: string) => Promise<void>
+  revise: (revision: PluginLabRevision) => Promise<void>
   join: () => Promise<void>
   cancel: () => Promise<void>
   dismiss: () => void

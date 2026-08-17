@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { MessageId } from '@deepseek-ai/dsh-client-connection/client'
 import type { ConversationSnapshot, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { ExperienceVerdict, FeedbackCategory, TrialPluginRef } from '../src/protocol.js'
+import type { ExperienceVerdict, FeedbackCategory, PluginLabRevision, TrialPluginRef } from '../src/protocol.js'
 import { ExperienceResultCard, type ExperienceResultCardProps } from '../src/client/ExperienceResultCard.js'
 import { PluginLabButton, type PluginLabButtonProps } from '../src/client/PluginLabButton.js'
 import { LabController, type PluginLabRemote } from '../src/client/controller.js'
@@ -20,7 +20,7 @@ function remote(overrides: Partial<PluginLabRemote> = {}): PluginLabRemote {
     probe: async () => success({ active: false, health: 'unknown' as const, suggestedCategory: 'general' as const, text: '未选择试用插件' }),
     select: async () => success({ ok: true, text: '已选择插件' }),
     record: async () => success({ ok: true, text: '待确认' }),
-    revise: async (_sessionId, summary) => success({ ok: true, text: `脱敏 Summary：${summary}`, summary }),
+    revise: async (_sessionId, revision) => success({ ok: true, text: `脱敏 Summary：${revision.summary}`, summary: revision.summary }),
     join: async () => success({ ok: true, text: '已提交' }),
     cancel: async () => success({ ok: true, text: '已取消' }),
     discard: async (_sessionId, eventId) => success({ ok: true, text: '已移除', eventId }),
@@ -43,7 +43,7 @@ function propsFor(
     usePluginLab,
     useSession: <T,>(selector: (snapshot: ConversationSnapshot) => T): T => selector({ nodes } as ConversationSnapshot),
     record: (verdict: ExperienceVerdict, category: FeedbackCategory) => controller.record(verdict, category),
-    revise: (summary: string) => controller.revise(summary),
+    revise: (revision: PluginLabRevision) => controller.revise(revision),
     join: () => controller.join(),
     cancel: () => controller.cancel().then(() => undefined),
     dismiss: () => { controller.dismiss() },
@@ -87,8 +87,8 @@ describe('rc.6 lightweight experience receipt', () => {
       ok: true,
       text: `脱敏 Summary：@example/plugin#1.0.0 · ${verdict} · ${category}`,
     }))
-    const revise: PluginLabRemote['revise'] = vi.fn(async (_sessionId, summary) => success({
-      ok: true, text: `脱敏 Summary：${summary}`, summary,
+    const revise: PluginLabRemote['revise'] = vi.fn(async (_sessionId, revision) => success({
+      ok: true, text: `脱敏 Summary：${revision.summary}`, summary: revision.summary,
     }))
     const join: PluginLabRemote['join'] = vi.fn(async () => success({ ok: true, text: '已提交 · clustered' }))
     const controller = new LabController(remote({
@@ -114,13 +114,20 @@ describe('rc.6 lightweight experience receipt', () => {
     fireEvent.click(screen.getByRole('button', { name: '不好用' }))
     await screen.findByRole('region', { name: '体验回执预览' })
     expect(record).toHaveBeenLastCalledWith(SESSION, 'bad', 'startup')
-    expect(screen.getByText('反馈大类：启动')).toBeDefined()
+    expect(screen.getByText('不好用 · 启动')).toBeDefined()
     expect(screen.getByText(/脱敏 Summary/)).toBeDefined()
     expect(screen.getByText(/仅发送这句摘要和只读标签/)).toBeDefined()
 
-    fireEvent.click(screen.getByRole('button', { name: '修改' }))
+    fireEvent.click(screen.getByRole('button', { name: '内容可修改' }))
     expect(screen.queryByRole('button', { name: '确认发送' })).toBeNull()
     const editor = screen.getByRole('textbox', { name: '编辑脱敏 Summary' })
+    const defaultSummary = (editor as HTMLTextAreaElement).value
+    fireEvent.click(screen.getByRole('button', { name: '一般' }))
+    fireEvent.change(screen.getByRole('combobox', { name: '编辑反馈分类' }), { target: { value: 'performance' } })
+    expect((editor as HTMLTextAreaElement).value).toBe(defaultSummary)
+    fireEvent.click(screen.getByRole('button', { name: '恢复默认文案' }))
+    expect((editor as HTMLTextAreaElement).value).toContain('在“性能”方面')
+    expect((editor as HTMLTextAreaElement).value).toContain('用户体验为“一般”')
     fireEvent.change(editor, { target: { value: '/Users/alice/private.log' } })
     fireEvent.click(screen.getByRole('button', { name: '应用修改' }))
     expect(screen.getByRole('alert').textContent).toContain('不能包含本地路径')
@@ -130,9 +137,12 @@ describe('rc.6 lightweight experience receipt', () => {
     expect(join).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: '应用修改' }))
     await screen.findByText(/插件启动偏慢，但交互仍然清楚/)
-    expect(revise).toHaveBeenLastCalledWith(SESSION, '插件启动偏慢，但交互仍然清楚。')
+    expect(revise).toHaveBeenLastCalledWith(SESSION, {
+      verdict: 'mixed', category: 'performance', summary: '插件启动偏慢，但交互仍然清楚。',
+    })
     expect(record).toHaveBeenCalledTimes(1)
     expect(join).not.toHaveBeenCalled()
+    expect(screen.getByText('一般 · 性能')).toBeDefined()
 
     fireEvent.click(screen.getByRole('button', { name: '确认发送' }))
     await screen.findByText('已提交 · clustered')

@@ -18,8 +18,8 @@ export class PluginLabPanelService extends TypertRemoteService {
     record(agent, verdict, category) {
         return this.handlers.record(agent, verdict, category);
     }
-    revise(agent, summary) {
-        return this.handlers.revise(agent, summary);
+    revise(agent, revision) {
+        return this.handlers.revise(agent, revision);
     }
     join(agent) {
         return this.handlers.join(agent);

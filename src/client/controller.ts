@@ -2,7 +2,7 @@ import type { ClientRemote } from '@deepseek-ai/dsh-api-remotes/client'
 import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import type {
-  ExperienceVerdict, FeedbackCategory, HealthStatus, ReceiptBoxSnapshot, TrialPluginRef,
+  ExperienceVerdict, FeedbackCategory, HealthStatus, PluginLabRevision, ReceiptBoxSnapshot, TrialPluginRef,
 } from '../protocol.js'
 import { fixedSummary } from '../summary.js'
 
@@ -89,17 +89,19 @@ export class LabController implements HostObservable<LabView> {
     }
   }
 
-  async revise(summary: string): Promise<void> {
+  async revise(revision: PluginLabRevision): Promise<void> {
     const pending = this.view.pending
     if (pending === undefined || pending.phase !== 'local') return
     this.publish({ ...this.view, pending: { ...pending, phase: 'saving' } })
-    const settled = await this.call(() => this.remote.revise(this.sessionId, summary))
+    const settled = await this.call(() => this.remote.revise(this.sessionId, revision))
     if (settled.ok && settled.value.ok) {
       this.publish({
         ...this.view,
         pending: {
           ...pending,
-          summary: settled.value.summary ?? summary,
+          verdict: revision.verdict,
+          category: revision.category,
+          summary: settled.value.summary ?? revision.summary,
           phase: 'local',
           text: settled.value.text,
         },

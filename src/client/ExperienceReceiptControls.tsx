@@ -1,17 +1,19 @@
 import { useState, type CSSProperties } from 'react'
 import {
+  FEEDBACK_CATEGORIES,
   MAX_FEEDBACK_SUMMARY_LENGTH,
   normalizeFeedbackSummary,
   type ExperienceVerdict,
   type FeedbackCategory,
+  type PluginLabRevision,
 } from '../protocol.js'
-import { categoryText, verdictText } from '../summary.js'
+import { categoryText, fixedSummary, verdictText } from '../summary.js'
 import type { LabView } from './controller.js'
 
 export interface ExperienceReceiptControlsProps {
   readonly view: LabView
   readonly record: (verdict: ExperienceVerdict, category: FeedbackCategory) => Promise<void>
-  readonly revise: (summary: string) => Promise<void>
+  readonly revise: (revision: PluginLabRevision) => Promise<void>
   readonly join: () => Promise<void>
   readonly cancel: () => Promise<void>
   readonly dismiss: () => void
@@ -64,6 +66,22 @@ const fieldLabel: CSSProperties = {
   letterSpacing: '.03em',
 }
 
+const choiceButton: CSSProperties = {
+  ...quietButton,
+  minWidth: 0,
+  height: 28,
+  padding: '0 7px',
+  background: '#fff',
+  fontSize: 11,
+}
+
+const editToggle: CSSProperties = {
+  ...quietButton,
+  height: 24,
+  padding: '0 8px',
+  fontSize: 10.5,
+}
+
 function pluginLabel(view: LabView): string {
   const plugin = view.plugin
   if (plugin === undefined) return '本次插件'
@@ -74,6 +92,8 @@ export function ExperienceReceiptControls({
   view, record, revise, join, cancel, dismiss, surface,
 }: ExperienceReceiptControlsProps) {
   const [editing, setEditing] = useState(false)
+  const [editVerdict, setEditVerdict] = useState<ExperienceVerdict>('mixed')
+  const [editCategory, setEditCategory] = useState<FeedbackCategory>('general')
   const [editSummary, setEditSummary] = useState('')
   const [editError, setEditError] = useState<string>()
   const pending = view.pending
@@ -114,6 +134,8 @@ export function ExperienceReceiptControls({
 
   const working = pending.phase === 'saving' || pending.phase === 'joining'
   const beginEditing = (): void => {
+    setEditVerdict(pending.verdict)
+    setEditCategory(pending.category)
     setEditSummary(pending.summary ?? '')
     setEditError(undefined)
     setEditing(true)
@@ -123,10 +145,16 @@ export function ExperienceReceiptControls({
       const normalized = normalizeFeedbackSummary(editSummary)
       setEditSummary(normalized)
       setEditError(undefined)
-      void revise(normalized).then(() => { setEditing(false) })
+      void revise({ verdict: editVerdict, category: editCategory, summary: normalized })
+        .then(() => { setEditing(false) })
     } catch (error: unknown) {
       setEditError(error instanceof Error ? error.message : '摘要格式无效')
     }
+  }
+  const restoreDefaultSummary = (): void => {
+    if (view.plugin === undefined) return
+    setEditSummary(fixedSummary(view.plugin, view.health ?? 'unknown', editVerdict, editCategory))
+    setEditError(undefined)
   }
   return (
     <span
@@ -138,18 +166,65 @@ export function ExperienceReceiptControls({
     >
       <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
         <strong>{pending.phase === 'joined' ? '回执已发送' : editing ? '修改回执' : '发送前预览'}</strong>
-        <small style={{ color: '#64748b' }}>
-          {editing ? '用户编辑' : `反馈大类：${categoryText(pending.category)}`}
-        </small>
+        {editing ? (
+          <button
+            type="button"
+            aria-pressed={true}
+            title="关闭后放弃尚未应用的修改"
+            onClick={() => { setEditing(false); setEditError(undefined) }}
+            style={{ ...editToggle, border: '1px solid #0f766e', background: '#e7f5f1', color: '#0f5f59', fontWeight: 700 }}
+          >内容可修改</button>
+        ) : (
+          <small style={{ color: '#64748b' }}>{verdictText(pending.verdict)} · {categoryText(pending.category)}</small>
+        )}
       </span>
       {editing && pending.phase === 'local' ? (
         <>
-          <label style={{ display: 'grid', gap: 5 }}>
+          <span style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 7 }}>
+            <span style={{ display: 'grid', gap: 5 }}>
+              <small style={fieldLabel}>体验</small>
+              <span role="group" aria-label="编辑体验" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 3 }}>
+                {(['good', 'mixed', 'bad'] as const).map(verdict => (
+                  <button
+                    key={verdict}
+                    type="button"
+                    aria-pressed={editVerdict === verdict}
+                    style={editVerdict === verdict
+                      ? { ...choiceButton, border: '1px solid #0f766e', background: '#e7f5f1', color: '#0f5f59', fontWeight: 700 }
+                      : choiceButton}
+                    onClick={() => { setEditVerdict(verdict) }}
+                  >{verdictText(verdict)}</button>
+                ))}
+              </span>
+            </span>
+            <label style={{ display: 'grid', gap: 5 }}>
+              <small style={fieldLabel}>反馈分类</small>
+              <select
+                aria-label="编辑反馈分类"
+                value={editCategory}
+                onChange={event => { setEditCategory(event.currentTarget.value as FeedbackCategory) }}
+                style={{
+                  height: 28, boxSizing: 'border-box', padding: '0 7px', border: '1px solid #cbd5e1',
+                  borderRadius: 8, background: '#fff', color: '#334155', font: 'inherit', outlineColor: '#0f766e',
+                }}
+              >
+                {FEEDBACK_CATEGORIES.map(value => <option key={value} value={value}>{categoryText(value)}</option>)}
+              </select>
+            </label>
+          </span>
+          <span style={{ display: 'grid', gap: 5 }}>
             <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
               <small style={fieldLabel}>脱敏 Summary</small>
-              <small style={{ color: editSummary.length > MAX_FEEDBACK_SUMMARY_LENGTH ? '#be123c' : '#94a3b8' }}>
-                {editSummary.length}/{MAX_FEEDBACK_SUMMARY_LENGTH}
-              </small>
+              <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 7 }}>
+                <button
+                  type="button"
+                  onClick={restoreDefaultSummary}
+                  style={{ border: 0, padding: 0, background: 'transparent', color: '#0f766e', cursor: 'pointer', font: 'inherit', fontSize: 10.5 }}
+                >恢复默认文案</button>
+                <small style={{ color: editSummary.length > MAX_FEEDBACK_SUMMARY_LENGTH ? '#be123c' : '#94a3b8' }}>
+                  {editSummary.length}/{MAX_FEEDBACK_SUMMARY_LENGTH}
+                </small>
+              </span>
             </span>
             <textarea
               aria-label="编辑脱敏 Summary"
@@ -164,14 +239,14 @@ export function ExperienceReceiptControls({
                 background: '#fff', color: '#1e293b', font: 'inherit', lineHeight: 1.5, outlineColor: '#0f766e',
               }}
             />
-          </label>
+          </span>
           {editError !== undefined && <small role="alert" style={{ color: '#be123c' }}>{editError}</small>}
           <small style={{ color: '#64748b' }}>
-            聚合标签：{verdictText(pending.verdict)} · {categoryText(pending.category)}。请勿粘贴日志、路径、密钥或任务内容。
+            标签与 Summary 分别修改，不会实时重算。请勿粘贴日志、路径、密钥或任务内容。
           </small>
           <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
             <button type="button" style={confirmButton} onClick={applyEditing}>应用修改</button>
-            <button type="button" style={quietButton} onClick={() => { setEditing(false) }}>放弃修改</button>
+            <button type="button" style={quietButton} onClick={() => { setEditing(false); setEditError(undefined) }}>关闭编辑</button>
           </span>
         </>
       ) : (
@@ -197,7 +272,7 @@ export function ExperienceReceiptControls({
               </button>
             )}
             {pending.phase === 'local' && (
-              <button type="button" style={quietButton} onClick={beginEditing}>修改</button>
+              <button type="button" aria-pressed={false} style={editToggle} onClick={beginEditing}>内容可修改</button>
             )}
             {pending.phase === 'local' && (
               <button type="button" style={{ ...quietButton, border: 'none', background: 'transparent' }} onClick={() => { void cancel() }}>

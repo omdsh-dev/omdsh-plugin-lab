@@ -1,9 +1,9 @@
-import { type ExperienceVerdict, type FeedbackCategory } from '../protocol.js';
+import { type ExperienceVerdict, type FeedbackCategory, type PluginLabRevision } from '../protocol.js';
 import type { LabView } from './controller.js';
 export interface ExperienceReceiptControlsProps {
     readonly view: LabView;
     readonly record: (verdict: ExperienceVerdict, category: FeedbackCategory) => Promise<void>;
-    readonly revise: (summary: string) => Promise<void>;
+    readonly revise: (revision: PluginLabRevision) => Promise<void>;
     readonly join: () => Promise<void>;
     readonly cancel: () => Promise<void>;
     readonly dismiss: () => void;

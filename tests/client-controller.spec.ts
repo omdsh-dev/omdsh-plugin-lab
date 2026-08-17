@@ -10,7 +10,7 @@ function remote(overrides: Partial<PluginLabRemote> = {}): PluginLabRemote {
     probe: async () => success({ active: true, health: 'ok' as const, suggestedCategory: 'general' as const, text: '插件运行正常' }),
     select: async () => success({ ok: true, text: '已选择插件' }),
     record: async () => success({ ok: true, text: '已只保存在本机' }),
-    revise: async (_sessionId, summary) => success({ ok: true, text: '已修改本地摘要', summary }),
+    revise: async (_sessionId, revision) => success({ ok: true, text: '已修改本地回执', summary: revision.summary }),
     join: async () => success({ ok: true, text: '问题回执：PL-1234' }),
     cancel: async () => success({ ok: true, text: '已取消' }),
     discard: async (_sessionId, eventId) => success({ ok: true, text: '已移除', eventId }),
@@ -23,8 +23,8 @@ function remote(overrides: Partial<PluginLabRemote> = {}): PluginLabRemote {
 describe('silent panel controller', () => {
   it('keeps local preview and network sharing as separate RPC actions', async () => {
     const record: PluginLabRemote['record'] = vi.fn(async () => success({ ok: true, text: '已只保存在本机' }))
-    const revise: PluginLabRemote['revise'] = vi.fn(async (_sessionId, summary) => success({
-      ok: true, text: `脱敏 Summary：${summary}`, summary,
+    const revise: PluginLabRemote['revise'] = vi.fn(async (_sessionId, revision) => success({
+      ok: true, text: `脱敏 Summary：${revision.summary}`, summary: revision.summary,
     }))
     const join: PluginLabRemote['join'] = vi.fn(async () => success({ ok: true, text: '问题回执：PL-1234' }))
     const probe: PluginLabRemote['probe'] = vi.fn(async () => success({ active: false, health: 'unknown' as const, suggestedCategory: 'general' as const, text: '未选择试用插件' }))
@@ -39,10 +39,14 @@ describe('silent panel controller', () => {
     })
     expect(controller.getSnapshot().pending).not.toHaveProperty('messageId')
 
-    await controller.revise('插件启动偏慢，但交互仍然清楚。')
-    expect(revise).toHaveBeenLastCalledWith(SESSION, '插件启动偏慢，但交互仍然清楚。')
+    await controller.revise({
+      verdict: 'mixed', category: 'performance', summary: '插件启动偏慢，但交互仍然清楚。',
+    })
+    expect(revise).toHaveBeenLastCalledWith(SESSION, {
+      verdict: 'mixed', category: 'performance', summary: '插件启动偏慢，但交互仍然清楚。',
+    })
     expect(controller.getSnapshot().pending).toMatchObject({
-      phase: 'local', summary: '插件启动偏慢，但交互仍然清楚。',
+      verdict: 'mixed', category: 'performance', phase: 'local', summary: '插件启动偏慢，但交互仍然清楚。',
     })
 
     await controller.join()

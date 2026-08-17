@@ -168,7 +168,7 @@ export function apply(ctx, rawConfig) {
         draftsBySession.set(key, event.eventId);
         return { ok: true, text: renderUploadPreview(event).join('\n'), eventId: event.eventId, summary };
     };
-    const reviseFeedback = (agent, input) => {
+    const reviseFeedback = (agent, revision) => {
         const key = agentKey(agent);
         const previousId = draftsBySession.get(key);
         if (previousId === undefined)
@@ -178,7 +178,7 @@ export function apply(ctx, rawConfig) {
             return { ok: false, text: '找不到可修改的本地草稿。' };
         let summary;
         try {
-            summary = normalizeFeedbackSummary(input);
+            summary = normalizeFeedbackSummary(revision.summary);
         }
         catch (error) {
             return { ok: false, text: error instanceof Error ? error.message : '摘要格式无效' };
@@ -190,10 +190,10 @@ export function apply(ctx, rawConfig) {
             eventId: crypto.randomUUID(),
             plugin: source.plugin,
             health: source.health,
-            experience: source.experience,
-            category: source.category,
+            experience: revision.verdict,
+            category: revision.category,
             summary,
-            summarySource: summary === fixedSummary(source.plugin, source.health, source.experience, source.category)
+            summarySource: summary === fixedSummary(source.plugin, source.health, revision.verdict, revision.category)
                 ? 'template'
                 : 'user_edited',
             source: 'user_confirmed',

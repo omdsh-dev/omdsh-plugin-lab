@@ -5,6 +5,7 @@ import type {
   FeedbackCategory,
   PluginLabPanelAction,
   PluginLabPanelProbe,
+  PluginLabRevision,
   ReceiptBoxSnapshot,
   TrialPluginRef,
 } from './protocol.js'
@@ -18,7 +19,7 @@ interface PluginLabRemoteNamespace {
     verdict: ExperienceVerdict,
     category: FeedbackCategory,
   ) => Promise<RemoteResult<PluginLabPanelAction>>
-  revise: (agentId: SessionId, summary: string) => Promise<RemoteResult<PluginLabPanelAction>>
+  revise: (agentId: SessionId, revision: PluginLabRevision) => Promise<RemoteResult<PluginLabPanelAction>>
   join: (agentId: SessionId) => Promise<RemoteResult<PluginLabPanelAction>>
   cancel: (agentId: SessionId) => Promise<RemoteResult<PluginLabPanelAction>>
   discard: (agentId: SessionId, eventId: string) => Promise<RemoteResult<PluginLabPanelAction>>

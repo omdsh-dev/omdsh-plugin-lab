@@ -180,13 +180,17 @@ export declare const TYPERT: {
                 readonly schema: import("zod").ZodIntersection<import("zod").ZodString, import("zod").ZodUnknown>;
             };
         }, {
-            readonly name: "summary";
-            readonly wire: "summary";
+            readonly name: "revision";
+            readonly wire: "revision";
             readonly source: "json";
             readonly codec: {
                 readonly mode: "strict";
-                readonly typeSymbol: "string";
-                readonly schema: import("zod").ZodString;
+                readonly typeSymbol: "@oh-my-dsh/plugin-lab#PluginLabRevision";
+                readonly schema: import("zod").ZodObject<{
+                    verdict: import("zod").ZodUnion<readonly [import("zod").ZodLiteral<"good">, import("zod").ZodLiteral<"mixed">, import("zod").ZodLiteral<"bad">]>;
+                    category: import("zod").ZodUnion<readonly [import("zod").ZodLiteral<"installation">, import("zod").ZodLiteral<"startup">, import("zod").ZodLiteral<"invocation">, import("zod").ZodLiteral<"compatibility">, import("zod").ZodLiteral<"reliability">, import("zod").ZodLiteral<"performance">, import("zod").ZodLiteral<"result_quality">, import("zod").ZodLiteral<"general">]>;
+                    summary: import("zod").ZodString;
+                }, import("zod/v4/core").$strip>;
             };
         }];
         readonly result: {

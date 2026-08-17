@@ -6,6 +6,7 @@ import type {
   FeedbackCategory,
   PluginLabPanelAction,
   PluginLabPanelProbe,
+  PluginLabRevision,
   ReceiptBoxSnapshot,
   TrialPluginRef,
 } from './protocol.js'
@@ -14,7 +15,7 @@ export interface PluginLabPanelHandlers {
   probe(agent: Agent): PluginLabPanelProbe
   select(agent: Agent, plugin: TrialPluginRef): PluginLabPanelAction
   record(agent: Agent, verdict: ExperienceVerdict, category: FeedbackCategory): PluginLabPanelAction
-  revise(agent: Agent, summary: string): PluginLabPanelAction
+  revise(agent: Agent, revision: PluginLabRevision): PluginLabPanelAction
   join(agent: Agent): Promise<PluginLabPanelAction>
   cancel(agent: Agent): PluginLabPanelAction
   discard(agent: Agent, eventId: string): PluginLabPanelAction
@@ -47,8 +48,8 @@ export class PluginLabPanelService extends TypertRemoteService {
     return this.handlers.record(agent, verdict, category)
   }
 
-  revise(agent: Agent, summary: string): PluginLabPanelAction {
-    return this.handlers.revise(agent, summary)
+  revise(agent: Agent, revision: PluginLabRevision): PluginLabPanelAction {
+    return this.handlers.revise(agent, revision)
   }
 
   join(agent: Agent): Promise<PluginLabPanelAction> {
